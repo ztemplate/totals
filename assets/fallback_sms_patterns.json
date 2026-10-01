@@ -1,0 +1,4333 @@
+{
+  "schema": "totals.fallbackSmsPatterns.v1",
+  "updatedAt": "2026-05-03T00:00:00Z",
+  "defaults": {
+    "reference": {
+      "fallback": "timestamp_message_hash",
+      "rejectStatic": true
+    }
+  },
+  "banks": [
+    {
+      "bankId": 9,
+      "bankKey": "amhara",
+      "displayName": "Amhara Bank",
+      "senderIds": [
+        "AMHARA BANK"
+      ],
+      "rules": [
+        {
+          "id": "amhara_fallback_002",
+          "enabled": true,
+          "priority": 2,
+          "type": "DEBIT",
+          "matchers": {
+            "debit": "debited with ETB ([\\d,]+\\.\\d{2})"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "ETB"
+          },
+          "extractors": {
+            "amount": "has been debited with ETB ([\\d,.]+)",
+            "balance": "Your Current Balance is ETB ([\\d,.]+)",
+            "account": "your Account (1\\*{9}\\d{4})",
+            "link": "https?://[\\w.-]+(:\\d+)?(/[\\w.-]*)*"
+          },
+          "reference": {
+            "extractor": "https?://[\\w.-]+(:\\d+)?(/[\\w.-]*)*",
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        },
+        {
+          "id": "amhara_fallback_003",
+          "enabled": true,
+          "priority": 3,
+          "type": "DEBIT",
+          "matchers": {
+            "debit": "Debited"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "ETB"
+          },
+          "extractors": {
+            "amount": "Debited with ETB -([\\d,]+\\.\\d{2})",
+            "balance": "Your Current Balance is ETB ([\\d,.]+)",
+            "account": "Account (\\*{4}\\d{4})"
+          },
+          "reference": {
+            "extractor": null,
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        },
+        {
+          "id": "amhara_fallback_004",
+          "enabled": true,
+          "priority": 4,
+          "type": "CREDIT",
+          "matchers": {
+            "credit": "Credited with"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "ETB"
+          },
+          "extractors": {
+            "amount": "ETB ([\\d,]+\\.\\d{2})",
+            "balance": "Current Balance is ETB ([\\d,.]+)",
+            "account": "Account (\\*{4}\\d{4})"
+          },
+          "reference": {
+            "extractor": null,
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        },
+        {
+          "id": "amhara_fallback_005",
+          "enabled": true,
+          "priority": 5,
+          "type": "DEBIT",
+          "matchers": {
+            "debit": "debited"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "ETB"
+          },
+          "extractors": {
+            "amount": "debited with ETB ([\\d,.]+)",
+            "balance": "Current Balance is ETB ([\\d,.]+)",
+            "account": "Account (\\d{2}\\*{7}\\d{4})",
+            "link": "https?://[\\w.-]+(?:\\.[\\w.-]+)+[/\\w.-]*"
+          },
+          "reference": {
+            "extractor": "https?://[\\w.-]+(?:\\.[\\w.-]+)+[/\\w.-]*",
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        },
+        {
+          "id": "amhara_fallback_006",
+          "enabled": true,
+          "priority": 6,
+          "type": "CREDIT",
+          "matchers": {
+            "credit": "Credited"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "ETB"
+          },
+          "extractors": {
+            "amount": "has been Credited with ETB ([\\d,.]+)",
+            "balance": "Your Current Balance is ETB ([\\d,.]+)",
+            "account": "Account ([\\d*]+)"
+          },
+          "reference": {
+            "extractor": null,
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        }
+      ],
+      "counterparty": {
+        "creditor": [],
+        "receiver": []
+      }
+    },
+    {
+      "bankId": 36,
+      "bankKey": "apollo",
+      "displayName": "Apollo",
+      "senderIds": [
+        "apollo"
+      ],
+      "rules": [
+        {
+          "id": "apollo_fallback_000",
+          "enabled": true,
+          "priority": 0,
+          "type": "AUTO",
+          "matchers": {
+            "credit": "credited",
+            "debit": "debited"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "ETB"
+          },
+          "extractors": {
+            "amount": "ETB (\\d+(?:,\\d{3})*(?:\\.\\d{1,2})?)",
+            "balance": "available balance is ETB (\\d+(?:,\\d{3})*(?:\\.\\d{1,2})?)",
+            "account": "account number (\\d\\*+\\d+)",
+            "link": "(https://t\\.me/\\S+)"
+          },
+          "reference": {
+            "extractor": "(https://t\\.me/\\S+)",
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        },
+        {
+          "id": "apollo_fallback_001",
+          "enabled": true,
+          "priority": 1,
+          "type": "DEBIT",
+          "matchers": {
+            "debit": "debited"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "ETB"
+          },
+          "extractors": {
+            "amount": "debited with ETB (\\d+(?:,\\d{3})*(?:\\.\\d{1,2})?)",
+            "balance": "Your available balance is ETB (\\d+(?:,\\d{3})*(?:\\.\\d{1,2})?)",
+            "account": "account number (\\d\\*+\\d+)",
+            "link": "(https://t\\.me/\\S+)"
+          },
+          "reference": {
+            "extractor": "(https://t\\.me/\\S+)",
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          },
+          "classification": {
+            "hints": [
+              {
+                "id": "apollo_fallback_001_hint_00",
+                "categoryKey": "air_time_0",
+                "matcher": "\\bPREPAID MOBILE TOP-UP ACCOUNT\\b"
+              }
+            ]
+          }
+        },
+        {
+          "id": "apollo_fallback_002",
+          "enabled": true,
+          "priority": 2,
+          "type": "CREDIT",
+          "matchers": {
+            "credit": "credited"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "ETB"
+          },
+          "extractors": {
+            "amount": "credited by MONEY SEND PAYABLE with (ETB\\s*([\\d,.]+))",
+            "balance": "Avail balance:\\s*(ETB\\s*([\\d,.]+))",
+            "account": "A/C No\\.\\s*(\\d{1}\\*{5}\\d{2}|\\d{4}[ -]?\\d{4})",
+            "link": "(https?://[\\w.-]+(?:/[\\w.-]*)*)"
+          },
+          "reference": {
+            "extractor": "(https?://[\\w.-]+(?:/[\\w.-]*)*)",
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        },
+        {
+          "id": "apollo_fallback_003",
+          "enabled": true,
+          "priority": 3,
+          "type": "DEBIT",
+          "matchers": {
+            "debit": "debited"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "ETB"
+          },
+          "extractors": {
+            "amount": "debited by\\s*ETB\\s*([\\d,.]+)",
+            "balance": "Avail balance:\\s*ETB\\s*([\\d,.]+)",
+            "account": "A/C No\\.\\s*(\\d{1}\\*{5}\\d{2}|\\d{4}[ -]?\\d{4}|\\d{4}\\s\\d{4})",
+            "link": "https?://[\\w.-]+(?:/[\\w.-]*)*"
+          },
+          "reference": {
+            "extractor": "https?://[\\w.-]+(?:/[\\w.-]*)*",
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        },
+        {
+          "id": "apollo_fallback_004",
+          "enabled": true,
+          "priority": 4,
+          "type": "CREDIT",
+          "matchers": {
+            "credit": "credited"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "ETB"
+          },
+          "extractors": {
+            "amount": "credited By [^\\d]*(ETB\\s*[\\d,.]+)",
+            "balance": "Avail\\. bal:\\s*(ETB\\s*[\\d,.]+)",
+            "account": "A/C No\\.\\s*(\\d{1,5}\\*{5}\\d{2}|\\d{4}[ -]?\\d{4}|\\d{4}\\s\\d{4})",
+            "link": "https?://[\\w.-]+(?:/[\\w.-]*)*"
+          },
+          "reference": {
+            "extractor": "https?://[\\w.-]+(?:/[\\w.-]*)*",
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        },
+        {
+          "id": "apollo_fallback_005",
+          "enabled": true,
+          "priority": 5,
+          "type": "CREDIT",
+          "matchers": {
+            "credit": "credited"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "ETB"
+          },
+          "extractors": {
+            "amount": "credited with ETB ([\\d,.]+)",
+            "balance": "Available Balance:\\s*ETB ([\\d,.]+)",
+            "account": "account (\\d\\*{5}\\d{2}|\\d{4}[ -]?\\d{4})",
+            "link": "https?://[\\w.-]+(?:\\.[\\w.-]+)+[/\\w.-]*"
+          },
+          "reference": {
+            "extractor": "https?://[\\w.-]+(?:\\.[\\w.-]+)+[/\\w.-]*",
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        },
+        {
+          "id": "apollo_fallback_006",
+          "enabled": true,
+          "priority": 6,
+          "type": "CREDIT",
+          "matchers": {
+            "credit": "credited"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "ETB"
+          },
+          "extractors": {
+            "amount": "with ETB\\s+(\\d+\\.\\d{2})",
+            "balance": "Avail balance:\\s*(ETB\\s*[\\d,.]+)",
+            "account": "A\\/C No\\.\\s+([\\d\\*]+)",
+            "link": "https?://[\\w\\-\\.]+(/[\\w\\-\\.]+)*"
+          },
+          "reference": {
+            "extractor": "https?://[\\w\\-\\.]+(/[\\w\\-\\.]+)*",
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        },
+        {
+          "id": "apollo_fallback_007",
+          "enabled": true,
+          "priority": 7,
+          "type": "DEBIT",
+          "matchers": {
+            "debit": "was debited"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "ETB"
+          },
+          "extractors": {
+            "amount": "debited with\\s+ETB\\s*([\\d,.]+)",
+            "balance": "Available Balance:\\s+ETB\\s*([\\d,.]+)",
+            "account": "your account\\s+([\\d*]+)",
+            "link": "Receipt:\\s+(https://\\S+)"
+          },
+          "reference": {
+            "extractor": "Receipt:\\s+(https://\\S+)",
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        },
+        {
+          "id": "apollo_fallback_008",
+          "enabled": true,
+          "priority": 8,
+          "type": "DEBIT",
+          "matchers": {
+            "debit": "debited"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "ETB"
+          },
+          "extractors": {
+            "amount": "debited with ETB ([\\d,.]+)",
+            "balance": "available balance in the account is ETB ([\\d,.]+)",
+            "account": "account (\\d\\*{5}\\d{2}|\\d{4}[ -]?\\d{4}|\\d{4} \\d{4})"
+          },
+          "reference": {
+            "extractor": null,
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        },
+        {
+          "id": "apollo_fallback_009",
+          "enabled": true,
+          "priority": 9,
+          "type": "AUTO",
+          "matchers": {
+            "credit": "cashback",
+            "debit": "for using Apollo QR payment"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "ETB"
+          },
+          "extractors": {
+            "amount": "cashback of ETB ([\\d,.]+)",
+            "balance": "available balance is\\s*ETB\\s*([\\d,.]+)",
+            "account": "Ref No\\. ([A-Za-z0-9]+)",
+            "link": "https?://[\\w.-]+(?:/[\\w.-]*)*"
+          },
+          "reference": {
+            "extractor": "https?://[\\w.-]+(?:/[\\w.-]*)*",
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        }
+      ],
+      "counterparty": {
+        "creditor": [],
+        "receiver": []
+      }
+    },
+    {
+      "bankId": 2,
+      "bankKey": "awash",
+      "displayName": "Awash Bank",
+      "senderIds": [
+        "Awash Bank"
+      ],
+      "rules": [
+        {
+          "id": "awash_fallback_000",
+          "enabled": true,
+          "priority": 0,
+          "type": "AUTO",
+          "matchers": {
+            "credit": "Credited",
+            "debit": "Debited"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "ETB"
+          },
+          "extractors": {
+            "amount": "(?:Debited|Credited) with ETB (-?\\d+(?:,\\d{3})*(?:\\.\\d{1,2})?)",
+            "balance": "balance now is ETB (\\d+(?:,\\d{3})*(?:\\.\\d{1,2})?)",
+            "account": "your Account (\\d{6}\\*+\\d{2})",
+            "link": "https://t\\.me/awash_bank_official"
+          },
+          "reference": {
+            "extractor": "https://t\\.me/awash_bank_official",
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        },
+        {
+          "id": "awash_fallback_001",
+          "enabled": true,
+          "priority": 1,
+          "type": "DEBIT",
+          "matchers": {
+            "debit": "Transfer"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "ETB"
+          },
+          "extractors": {
+            "amount": "Telebirr Transfer of (\\d{1,3}(?:,\\d{3})*(?:\\.\\d{1,2})?) ETB",
+            "balance": "Your Balance  ETB (\\d{1,3}(?:,\\d{3})*(?:\\.\\d{1,2})?)",
+            "account": "from (\\d{6})\\d+(\\d{2})/BANK",
+            "link": "Receipt Link: (https://\\S+)"
+          },
+          "reference": {
+            "extractor": "Receipt Link: (https://\\S+)",
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        },
+        {
+          "id": "awash_fallback_002",
+          "enabled": true,
+          "priority": 2,
+          "type": "DEBIT",
+          "matchers": {
+            "debit": "sent"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "ETB"
+          },
+          "extractors": {
+            "amount": "\\bETB ([\\d,.]+)\\b",
+            "account": "\\b(\\(?\\d{10}\\)?|\\*{5}\\d{4}|\\d{4}[ -]?\\d{4})\\b",
+            "link": "\\bhttps?://[\\w.-]+(:\\d+)?/[\\w.-]+\\b"
+          },
+          "reference": {
+            "extractor": "\\bhttps?://[\\w.-]+(:\\d+)?/[\\w.-]+\\b",
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        },
+        {
+          "id": "awash_fallback_003",
+          "enabled": true,
+          "priority": 3,
+          "type": "AUTO",
+          "matchers": {
+            "credit": "transferred to",
+            "debit": "(?:transferred|withdrawn|debited|sent|purchased|paid)"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "ETB"
+          },
+          "extractors": {
+            "amount": "transferred ([\\d,.]+)\\s+to",
+            "balance": "New balance is ([\\d,.]+)\\s+as at",
+            "account": "Dear [A-Za-z ]+, you have transferred [\\d,.]+  to ([A-Za-z ]+)"
+          },
+          "reference": {
+            "extractor": null,
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          },
+          "counterparty": {
+            "receiver": [
+              "(?:paid|payment|sent|transfered|transferred|debited|recharged|bought|contributed|gifted|top-up).*?\\sto\\s+(.+?)(?=(?:\\s+on\\s*:?\\s*(?:\\d|[A-Z]{3})|\\s+at\\s+\\d|\\.\\s*(?:Your|Thank|Ref|Reference|Txn|Transaction|New|Current|Available|Avail|Remaining|Please|The)|\\s+(?:Your|Thank|Ref|Reference|Txn|Transaction|New balance|Current balance|Available balance|Avail balance|Remaining balance|Charge|VAT|Date|With Bank Ref|Bank Ref)|,\\s*(?:Txn|Reference|Ref)|\\s+with\\s+(?:transaction|reference|Bank Ref)|\\s+and\\s+(?:credited|debited|transferred|posted)|$))"
+            ]
+          }
+        },
+        {
+          "id": "awash_fallback_004",
+          "enabled": true,
+          "priority": 4,
+          "type": "DEBIT",
+          "matchers": {
+            "debit": "withdrawal"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "ETB"
+          },
+          "extractors": {
+            "amount": "withdrawal of ETB ([\\d,.]+)",
+            "balance": "balance now is ETB ([\\d,.]+)",
+            "account": "a/c (\\d{5}\\*{5}\\d{4}|\\d{4}[-\\s]?\\d{4}|\\d{4}\\s\\d{4})"
+          },
+          "reference": {
+            "extractor": null,
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        },
+        {
+          "id": "awash_fallback_005",
+          "enabled": true,
+          "priority": 5,
+          "type": "CREDIT",
+          "matchers": {
+            "credit": "received"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "ETB"
+          },
+          "extractors": {
+            "amount": "received ETB ([\\d,.]+)",
+            "account": "account (\\d{5}\\*{6}\\d)",
+            "link": "Receipt\\s+Link:\\s+(https:\\/\\/awashpay\\.awashbank\\.com:8225\\/[^\\s.]+)"
+          },
+          "reference": {
+            "extractor": "Receipt\\s+Link:\\s+(https:\\/\\/awashpay\\.awashbank\\.com:8225\\/[^\\s.]+)",
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        },
+        {
+          "id": "awash_fallback_006",
+          "enabled": true,
+          "priority": 6,
+          "type": "CREDIT",
+          "matchers": {
+            "credit": "(received)"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "(?:ETB)?"
+          },
+          "extractors": {
+            "amount": "received ([\\d,.]+) from",
+            "balance": "new balance is ([\\d,.]+)",
+            "account": "account (\\d{5}x{5}\\d{4})"
+          },
+          "reference": {
+            "extractor": null,
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          },
+          "counterparty": {
+            "creditor": [
+              "(?:received|credited|deposited|transfer(?:red|ed)? to|fund transfer).*?\\sfrom\\s+(.+?)(?=(?:\\s+on\\s*:?\\s*(?:\\d|[A-Z]{3})|\\s+at\\s+\\d|\\.\\s*(?:Your|Thank|Ref|Reference|Txn|Transaction|New|Current|Available|Avail|Remaining|Please|The)|\\s+(?:Your|Thank|Ref|Reference|Txn|Transaction|New balance|Current balance|Available balance|Avail balance|Remaining balance|Charge|VAT|Date|With Bank Ref|Bank Ref)|,\\s*(?:Txn|Reference|Ref)|\\s+with\\s+(?:transaction|reference|Bank Ref)|\\s+and\\s+(?:credited|debited|transferred|posted)|$))"
+            ]
+          }
+        },
+        {
+          "id": "awash_fallback_008",
+          "enabled": true,
+          "priority": 8,
+          "type": "DEBIT",
+          "matchers": {
+            "debit": "sent"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "\\bETB\\b"
+          },
+          "extractors": {
+            "amount": "\\bETB ([\\d,.]+)\\b",
+            "account": "\\b(\\(\\d{14}\\)|\\d{10,15}|\\*{5}\\d{4}|\\d{4}[ -]?\\d{4})\\b",
+            "link": "https?://[\\w.-]+(?:/[\\w.-]*)*"
+          },
+          "reference": {
+            "extractor": "https?://[\\w.-]+(?:/[\\w.-]*)*",
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          },
+          "counterparty": {
+            "receiver": [
+              "(?:paid|payment|sent|transfered|transferred|debited|recharged|bought|contributed|gifted|top-up).*?\\sto\\s+(.+?)(?=(?:\\s+on\\s*:?\\s*(?:\\d|[A-Z]{3})|\\s+at\\s+\\d|\\.\\s*(?:Your|Thank|Ref|Reference|Txn|Transaction|New|Current|Available|Avail|Remaining|Please|The)|\\s+(?:Your|Thank|Ref|Reference|Txn|Transaction|New balance|Current balance|Available balance|Avail balance|Remaining balance|Charge|VAT|Date|With Bank Ref|Bank Ref)|,\\s*(?:Txn|Reference|Ref)|\\s+with\\s+(?:transaction|reference|Bank Ref)|\\s+and\\s+(?:credited|debited|transferred|posted)|$))"
+            ]
+          }
+        },
+        {
+          "id": "awash_fallback_009",
+          "enabled": true,
+          "priority": 9,
+          "type": "CREDIT",
+          "matchers": {
+            "credit": "A deposit of"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "ETB"
+          },
+          "extractors": {
+            "amount": "A deposit of ETB ([\\d,.]+)",
+            "balance": "Your balance now is ETB ([\\d,.]+)",
+            "account": "a/c (\\d{5}\\*{5}\\d{4})"
+          },
+          "reference": {
+            "extractor": null,
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        },
+        {
+          "id": "awash_fallback_010",
+          "enabled": true,
+          "priority": 10,
+          "type": "CREDIT",
+          "matchers": {
+            "credit": "credited"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "ETB"
+          },
+          "extractors": {
+            "amount": "ETB ([\n\r\t ]*[\u0000-9,.]+)",
+            "balance": "available balance is now ETB ([\n\r\t ]*[\u0000-9,.]+)",
+            "account": "your account from ([A-Z ]+)",
+            "link": "https?://[\\w.-]+(?:\\.[\\w.-]+)+(:\\d+)?(/[\\w.-]*)*"
+          },
+          "reference": {
+            "extractor": "https?://[\\w.-]+(?:\\.[\\w.-]+)+(:\\d+)?(/[\\w.-]*)*",
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          },
+          "counterparty": {
+            "creditor": [
+              "(?:received|credited|deposited|transfer(?:red|ed)? to|fund transfer).*?\\sfrom\\s+(.+?)(?=(?:\\s+on\\s*:?\\s*(?:\\d|[A-Z]{3})|\\s+at\\s+\\d|\\.\\s*(?:Your|Thank|Ref|Reference|Txn|Transaction|New|Current|Available|Avail|Remaining|Please|The)|\\s+(?:Your|Thank|Ref|Reference|Txn|Transaction|New balance|Current balance|Available balance|Avail balance|Remaining balance|Charge|VAT|Date|With Bank Ref|Bank Ref)|,\\s*(?:Txn|Reference|Ref)|\\s+with\\s+(?:transaction|reference|Bank Ref)|\\s+and\\s+(?:credited|debited|transferred|posted)|$))"
+            ]
+          }
+        },
+        {
+          "id": "awash_fallback_011",
+          "enabled": true,
+          "priority": 11,
+          "type": "DEBIT",
+          "matchers": {
+            "debit": "You have transferred to"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "ETB"
+          },
+          "extractors": {
+            "amount": "Amount\\s+([\\d,]+(?:\\.\\d+)?)[ ]*ETB",
+            "balance": "Your Balance\\s*ETB\\s*([\\d,]+(?:\\.\\d+)?)",
+            "account": "To\\s+(\\d+)",
+            "link": "(https?://[\\w.-]+(?:\\.[\\w.-]+)+[\\w.,@?^=%&:/~+#-]*)"
+          },
+          "reference": {
+            "extractor": "(https?://[\\w.-]+(?:\\.[\\w.-]+)+[\\w.,@?^=%&:/~+#-]*)",
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          },
+          "counterparty": {
+            "receiver": [
+              "transferred to\\s+.+?\\s+Amount\\s+[\\d,.]+\\s*(?:ETB|Birr|Br)\\s+To\\s+\\d+\\s+\\((.+?)\\)"
+            ]
+          }
+        },
+        {
+          "id": "awash_fallback_012",
+          "enabled": true,
+          "priority": 12,
+          "type": "DEBIT",
+          "matchers": {
+            "debit": "You have transferred to"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "ETB"
+          },
+          "extractors": {
+            "amount": "Amount\\s+([\\d,]+(?:\\.\\d+)?)[ ]*ETB",
+            "balance": "Your Balance\\s*ETB\\s*([\\d,]+(?:\\.\\d+)?)",
+            "account": "To\\s+(\\d+)",
+            "link": "(https?://[\\w.-]+(?:\\.[\\w.-]+)+[\\w.,@?^=%&:/~+#-]*)"
+          },
+          "reference": {
+            "extractor": "(https?://[\\w.-]+(?:\\.[\\w.-]+)+[\\w.,@?^=%&:/~+#-]*)",
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          },
+          "counterparty": {
+            "receiver": [
+              "transferred to\\s+.+?\\s+Amount\\s+[\\d,.]+\\s*(?:ETB|Birr|Br)\\s+To\\s+\\d+\\s+\\((.+?)\\)"
+            ]
+          }
+        }
+      ],
+      "counterparty": {
+        "creditor": [],
+        "receiver": []
+      }
+    },
+    {
+      "bankId": 3,
+      "bankKey": "boa",
+      "displayName": "Bank of Abyssinia",
+      "senderIds": [
+        "BOA"
+      ],
+      "rules": [
+        {
+          "id": "boa_fallback_000",
+          "enabled": true,
+          "priority": 0,
+          "type": "AUTO",
+          "matchers": {
+            "credit": "credited",
+            "debit": "debited"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "ETB"
+          },
+          "extractors": {
+            "amount": "(?:debited|credited) with ETB (\\d+(?:,\\d{3})*(?:\\.\\d{1,2})?)",
+            "balance": "available balance in the account is ETB (\\d+(?:,\\d{3})*(?:\\.\\d{1,2})?)",
+            "account": "your account (\\d\\*+\\d{2})",
+            "link": "(https://t\\.me/BoAEth)"
+          },
+          "reference": {
+            "extractor": "(https://t\\.me/BoAEth)",
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        },
+        {
+          "id": "boa_fallback_001",
+          "enabled": true,
+          "priority": 1,
+          "type": "AUTO",
+          "matchers": {
+            "credit": "credited",
+            "debit": "debited"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "ETB"
+          },
+          "extractors": {
+            "amount": "with ETB (\\d+(?:,\\d{3})*(?:\\.\\d{1,2})?)",
+            "balance": "Available Balance:  ETB (\\d+(?:,\\d{3})*(?:\\.\\d{1,2})?)",
+            "account": "your account (\\d\\*+\\d{2})",
+            "link": "Receipt: (https?:\\S+)"
+          },
+          "reference": {
+            "extractor": "Receipt: (https?:\\S+)",
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        },
+        {
+          "id": "boa_fallback_002",
+          "enabled": true,
+          "priority": 2,
+          "type": "DEBIT",
+          "matchers": {
+            "debit": "debited"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "ETB"
+          },
+          "extractors": {
+            "amount": "has been debited with\\s*ETB\\s*([\\d,.]+)",
+            "balance": "Avail\\.\\s+bal:\\s*ETB\\s*([\\d,]+(?:\\.\\d*[1-9])?)",
+            "account": "A\\/C No\\.\\s+(\\d\\*+\\d{2})",
+            "link": "https?://[\\w.-]+(?:\\.[\\w.-]+)+[/\\w.-]*"
+          },
+          "reference": {
+            "extractor": "https?://[\\w.-]+(?:\\.[\\w.-]+)+[/\\w.-]*",
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        },
+        {
+          "id": "boa_fallback_003",
+          "enabled": true,
+          "priority": 3,
+          "type": "CREDIT",
+          "matchers": {
+            "credit": "credited"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "ETB|Birr|BIRR"
+          },
+          "extractors": {
+            "amount": "credited By .*?with ETB ([\\d,]+(?:\\.\\d{2})?)",
+            "balance": "Avail\\.\\s+bal:\\s*ETB\\s*([\\d,]+(?:\\.\\d*[1-9])?)",
+            "account": "A\\/C No\\. (\\d\\*+?\\d+)",
+            "link": "(https?://[\\w.-]+(?:/[\\w.-]*)*)"
+          },
+          "reference": {
+            "extractor": "(https?://[\\w.-]+(?:/[\\w.-]*)*)",
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        },
+        {
+          "id": "boa_fallback_004",
+          "enabled": true,
+          "priority": 4,
+          "type": "CREDIT",
+          "matchers": {
+            "credit": "credited"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "ETB|birr|BIRR"
+          },
+          "extractors": {
+            "amount": "credited with ([\\d,.]+) birr",
+            "balance": "account balance is ([\\d,.]+) birr",
+            "account": "your (\\w+) account"
+          },
+          "reference": {
+            "extractor": null,
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        },
+        {
+          "id": "boa_fallback_005",
+          "enabled": true,
+          "priority": 5,
+          "type": "DEBIT",
+          "matchers": {
+            "debit": "Locked From Your Account"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "ETB"
+          },
+          "extractors": {
+            "amount": "(ETB\\s*([\\d,.]+))\\s+is\\s+Locked",
+            "balance": "Your Available Balance is ETB\\s*([\\d,.]+)",
+            "account": "Account Number (\\d\\*{6}\\d{2})"
+          },
+          "reference": {
+            "extractor": null,
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          },
+          "counterparty": {
+            "receiver": [
+              "(?:Due to POS TRANSACTION|POS purchase transaction|POS transaction).*?\\bat\\s+(.+?)(?=(?:\\s+on\\s*:?\\s*(?:\\d|[A-Z]{3})|\\s+at\\s+\\d|\\.\\s*(?:Your|Thank|Ref|Reference|Txn|Transaction|New|Current|Available|Avail|Remaining|Please|The)|\\s+(?:Your|Thank|Ref|Reference|Txn|Transaction|New balance|Current balance|Available balance|Avail balance|Remaining balance|Charge|VAT|Date|With Bank Ref|Bank Ref)|,\\s*(?:Txn|Reference|Ref)|\\s+with\\s+(?:transaction|reference|Bank Ref)|\\s+and\\s+(?:credited|debited|transferred|posted)|$))"
+            ]
+          }
+        },
+        {
+          "id": "boa_fallback_006",
+          "enabled": true,
+          "priority": 6,
+          "type": "CREDIT",
+          "matchers": {
+            "credit": "ገቢ"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "ብር|ETB"
+          },
+          "extractors": {
+            "amount": "ብር ([\\d,]+\\.\\d{2}) ገቢ",
+            "balance": "የገንዘብ መጠን : ብር ([\\d,.]+)",
+            "account": "ሂሳብዎ (\\d\\*{5}\\d{2})"
+          },
+          "reference": {
+            "extractor": null,
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        },
+        {
+          "id": "boa_fallback_007",
+          "enabled": true,
+          "priority": 7,
+          "type": "CREDIT",
+          "matchers": {
+            "credit": "transferred you"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "Br|ETB"
+          },
+          "extractors": {
+            "amount": "transferred you Br\\.([\\d,.]+)",
+            "account": "your Commercial Bank of Ethiopia account (\\d\\*{3}\\d+)"
+          },
+          "reference": {
+            "extractor": null,
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          },
+          "counterparty": {
+            "creditor": [
+              "Dear\\s+[^,]+,\\s+(.+?)\\s+transferred you\\b"
+            ]
+          }
+        },
+        {
+          "id": "boa_fallback_008",
+          "enabled": true,
+          "priority": 8,
+          "type": "DEBIT",
+          "matchers": {
+            "debit": "debited"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "ETB"
+          },
+          "extractors": {
+            "amount": "debited by ETB ([\\d,]+\\.\\d{2})",
+            "balance": "Avail balance:\\s*([\\d,.]+)",
+            "account": "A/C No\\. (\\d\\*{5}\\d{2})",
+            "link": "Ref No\\.\\s*(\\w+)"
+          },
+          "reference": {
+            "extractor": "Ref No\\.\\s*(\\w+)",
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          },
+          "counterparty": {
+            "receiver": [
+              "(?:paid|payment|sent|transfered|transferred|debited|recharged|bought|contributed|gifted|top-up).*?\\sto\\s+(.+?)(?=(?:\\s+on\\s*:?\\s*(?:\\d|[A-Z]{3})|\\s+at\\s+\\d|\\.\\s*(?:Your|Thank|Ref|Reference|Txn|Transaction|New|Current|Available|Avail|Remaining|Please|The)|\\s+(?:Your|Thank|Ref|Reference|Txn|Transaction|New balance|Current balance|Available balance|Avail balance|Remaining balance|Charge|VAT|Date|With Bank Ref|Bank Ref)|,\\s*(?:Txn|Reference|Ref)|\\s+with\\s+(?:transaction|reference|Bank Ref)|\\s+and\\s+(?:credited|debited|transferred|posted)|$))"
+            ]
+          }
+        },
+        {
+          "id": "boa_fallback_009",
+          "enabled": true,
+          "priority": 9,
+          "type": "DEBIT",
+          "matchers": {
+            "debit": "withdrawn"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "ETB|birr|BIRR"
+          },
+          "extractors": {
+            "amount": "withdrawn\\s+([\\d,.]+)\\s+birr",
+            "balance": "balance\\s+is\\s+([\\d,.]+)\\s+birr",
+            "account": "([\\d\\s-]+)"
+          },
+          "reference": {
+            "extractor": null,
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        },
+        {
+          "id": "boa_fallback_010",
+          "enabled": true,
+          "priority": 10,
+          "type": "CREDIT",
+          "matchers": {
+            "credit": "received"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "ETB|birr|BIRR"
+          },
+          "extractors": {
+            "amount": "received\\s+([\\d,.]+)\\s+birr",
+            "balance": "balance\\s+is\\s+([\\d,.]+)\\s+birr",
+            "account": "from\\s+(\\d{12})"
+          },
+          "reference": {
+            "extractor": null,
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        },
+        {
+          "id": "boa_fallback_011",
+          "enabled": true,
+          "priority": 11,
+          "type": "CREDIT",
+          "matchers": {
+            "credit": "credited"
+          },
+          "currency": {
+            "code": "USD",
+            "matcher": "USD"
+          },
+          "extractors": {
+            "amount": "credited with USD ([\\d,]+\\.\\d{2})",
+            "balance": "Available Balance:\\s*USD\\s*([\\d,.]+)",
+            "account": "account (\\d\\*{5}\\d{2}|\\d{4}[ -]?\\d{4}|\\d{4} \\d{4})",
+            "link": "https?://[\\w.-]+(?:\\.[\\w.-]+)+[/\\w.-]*"
+          },
+          "reference": {
+            "extractor": "https?://[\\w.-]+(?:\\.[\\w.-]+)+[/\\w.-]*",
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        },
+        {
+          "id": "boa_fallback_012",
+          "enabled": true,
+          "priority": 12,
+          "type": "CREDIT",
+          "matchers": {
+            "credit": "ገቢ"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "ብር|ETB"
+          },
+          "extractors": {
+            "amount": "ከ\\s*([\\d,.]+)\\s*ብር\\s*ገቢ",
+            "balance": "የገንዘብ መጠን:\\s*ብር\\s*([\\d,.]+)",
+            "account": "ሂሳብ ቁጥርዎ\\s*(\\d\\*{5}\\d{2})",
+            "link": "https?://[\\w.-]+(?:/[\\w.-]*)*"
+          },
+          "reference": {
+            "extractor": "https?://[\\w.-]+(?:/[\\w.-]*)*",
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        },
+        {
+          "id": "boa_fallback_013",
+          "enabled": true,
+          "priority": 13,
+          "type": "DEBIT",
+          "matchers": {
+            "debit": "ወጪ"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "ብር"
+          },
+          "extractors": {
+            "amount": "ብር ([\\d,.]+) ወጪ",
+            "balance": "ያለዎት የገንዘብ መጠን :  ብር ([\\d,.]+)",
+            "account": "ከሂሳብዎ (\\d{1,3}\\*{5}\\d{2})"
+          },
+          "reference": {
+            "extractor": null,
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        },
+        {
+          "id": "boa_fallback_014",
+          "enabled": true,
+          "priority": 14,
+          "type": "DEBIT",
+          "matchers": {
+            "debit": "Transfer"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "ETB|birr|BIRR"
+          },
+          "extractors": {
+            "amount": "Transfer of ([\\d,.]+) birr",
+            "balance": "account balance is ([\\d,.]+) birr",
+            "account": "Account Number \\((\\d{8})\\)"
+          },
+          "reference": {
+            "extractor": null,
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        },
+        {
+          "id": "boa_fallback_015",
+          "enabled": true,
+          "priority": 15,
+          "type": "DEBIT",
+          "matchers": {
+            "debit": "ወጪ"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "ብር|ETB"
+          },
+          "extractors": {
+            "amount": "(\\d{1,3}(?:[.,]\\d{3})*(?:[.,]\\d{2})?)\\s*ብር\\s*ወጪ",
+            "balance": "የገንዘብ መጠን:\\s*ብር\\s*(\\d{1,3}(?:[.,]\\d{3})*(?:[.,]\\d{2})?)",
+            "account": "ሂሳብ ቁጥርዎ\\s*(\\d\\*{5}\\d{2})",
+            "link": "(https?://[\\w.-]+(?:/[\\w.-]*)*)"
+          },
+          "reference": {
+            "extractor": "(https?://[\\w.-]+(?:/[\\w.-]*)*)",
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        },
+        {
+          "id": "boa_fallback_016",
+          "enabled": true,
+          "priority": 16,
+          "type": "CREDIT",
+          "matchers": {
+            "credit": "credited|received|deposited|transferred to"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "ETB"
+          },
+          "extractors": {
+            "amount": "credited with ETB ([\\d.]+)",
+            "balance": "Avail\\. bal:\\s*ETB\\s*([\\d,.]+)",
+            "account": "A/C No\\. (5\\*{5}\\d{2})"
+          },
+          "reference": {
+            "extractor": null,
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        },
+        {
+          "id": "boa_fallback_017",
+          "enabled": true,
+          "priority": 17,
+          "type": "DEBIT",
+          "matchers": {
+            "debit": "Locked From Your Account"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "ETB"
+          },
+          "extractors": {
+            "amount": "ETB ([\\d,.]+) is Locked",
+            "balance": "Your Available Balance is ETB ([\\d,.]+)",
+            "account": "Account Number (\\d\\*{5}\\d{2}|\\d{4}[ -]?\\d{4}|\\d{4} \\d{4})"
+          },
+          "reference": {
+            "extractor": null,
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          },
+          "counterparty": {
+            "receiver": [
+              "(?:Due to POS TRANSACTION|POS purchase transaction|POS transaction).*?\\bat\\s+(.+?)(?=(?:\\s+on\\s*:?\\s*(?:\\d|[A-Z]{3})|\\s+at\\s+\\d|\\.\\s*(?:Your|Thank|Ref|Reference|Txn|Transaction|New|Current|Available|Avail|Remaining|Please|The)|\\s+(?:Your|Thank|Ref|Reference|Txn|Transaction|New balance|Current balance|Available balance|Avail balance|Remaining balance|Charge|VAT|Date|With Bank Ref|Bank Ref)|,\\s*(?:Txn|Reference|Ref)|\\s+with\\s+(?:transaction|reference|Bank Ref)|\\s+and\\s+(?:credited|debited|transferred|posted)|$))"
+            ]
+          }
+        },
+        {
+          "id": "boa_fallback_018",
+          "enabled": true,
+          "priority": 18,
+          "type": "CREDIT",
+          "matchers": {
+            "credit": "\\b(credited)\\b"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "ETB"
+          },
+          "extractors": {
+            "amount": "Dear Customer,\\s+([\\d,]+\\.\\d{2})",
+            "balance": "Avail\\. bal:\\s+\\d+\\s+([\\d,]+\\.\\d{2})",
+            "account": "A\\/C No\\.\\s+([\\d\\*]+)",
+            "link": "https?://[\\w.-]+(?:/[\\w.-]*)*"
+          },
+          "reference": {
+            "extractor": "https?://[\\w.-]+(?:/[\\w.-]*)*",
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        },
+        {
+          "id": "boa_fallback_019",
+          "enabled": true,
+          "priority": 19,
+          "type": "DEBIT",
+          "matchers": {
+            "debit": "Locked From Your Account"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "(ETB|Birr|BIRR)"
+          },
+          "extractors": {
+            "amount": "(?:ETB|Birr|BIRR) ([\\d,.]+) is Locked",
+            "balance": "Your Available Balance is (ETB|Birr|BIRR) ([\\d,.]+)",
+            "account": "Account Number (\\d{1,4}[-\\s]?\\d{1,4}|\\d{1,4}\\*{4}\\d{2})"
+          },
+          "reference": {
+            "extractor": null,
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        },
+        {
+          "id": "boa_fallback_020",
+          "enabled": true,
+          "priority": 20,
+          "type": "CREDIT",
+          "matchers": {
+            "credit": "credited"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "ETB"
+          },
+          "extractors": {
+            "amount": "credited with\\s*(ETB\\s*([\\d,.]+))",
+            "balance": "Avail\\. bal:\\s*(ETB\\s*([\\d,.]+))",
+            "account": "A/C No\\.\\s*(\\d{1,5}\\*{5}\\d{2}|\\d{4}[ -]?\\d{4}|\\d{4}\\s\\d{4})"
+          },
+          "reference": {
+            "extractor": null,
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        }
+      ],
+      "counterparty": {
+        "creditor": [],
+        "receiver": []
+      }
+    },
+    {
+      "bankId": 37,
+      "bankKey": "cbe_birr",
+      "displayName": "CBE Birr",
+      "senderIds": [
+        "CBEBirr"
+      ],
+      "rules": [
+        {
+          "id": "cbe_birr_fallback_000",
+          "enabled": true,
+          "priority": 0,
+          "type": "CREDIT",
+          "matchers": {
+            "credit": "credited"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "Br"
+          },
+          "extractors": {
+            "amount": "credited with (\\d+(?:,\\d{3})*(?:\\.\\d{1,2}))Br",
+            "balance": "Your balance is (\\d+(?:,\\d{3})*(?:\\.\\d{1,2}))Br"
+          },
+          "reference": {
+            "extractor": null,
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        },
+        {
+          "id": "cbe_birr_fallback_001",
+          "enabled": true,
+          "priority": 1,
+          "type": "DEBIT",
+          "matchers": {
+            "debit": "transferred"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "Br"
+          },
+          "extractors": {
+            "amount": "transferred (\\d+(?:,\\d{3})*(?:\\.\\d{1,2}))Br",
+            "balance": "Your CBEBirr account balance is (\\d+(?:,\\d{3})*(?:\\.\\d{1,2}))Br",
+            "link": "https:\\/\\/shorturl\\.at\\/\\w+"
+          },
+          "reference": {
+            "extractor": "https:\\/\\/shorturl\\.at\\/\\w+",
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        },
+        {
+          "id": "cbe_birr_fallback_002",
+          "enabled": true,
+          "priority": 2,
+          "type": "DEBIT",
+          "matchers": {
+            "debit": "[Bb]ought"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "Br"
+          },
+          "extractors": {
+            "amount": "bought (\\d+(?:,\\d{3})*(?:\\.\\d{1,2})?)Br\\. of Airtime",
+            "balance": "your\\s+CBE\\s+Birr\\s+account\\s+balance\\s+is\\s+(\\d+(?:,\\d{3})*(?:\\.\\d{1,2})?)Br",
+            "link": "(https://shorturl\\.at/[A-Za-z0-9]+)"
+          },
+          "reference": {
+            "extractor": "(https://shorturl\\.at/[A-Za-z0-9]+)",
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          },
+          "classification": {
+            "hints": [
+              {
+                "id": "cbe_birr_fallback_002_hint_00",
+                "categoryKey": "air_time_0",
+                "matcher": "\\bbought\\s+\\d+(?:,\\d{3})*(?:\\.\\d{1,2})?Br\\.\\s+of\\s+Airtime\\b"
+              }
+            ]
+          }
+        },
+        {
+          "id": "cbe_birr_fallback_003",
+          "enabled": true,
+          "priority": 3,
+          "type": "DEBIT",
+          "matchers": {
+            "debit": "made"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "ETB|Br"
+          },
+          "extractors": {
+            "amount": "made ([\\d.]+)Br\\. payment",
+            "balance": "account balance is ([\\d.]+)Br\\.",
+            "link": "(https:\\/\\/da\\.gd\\/\\w+)"
+          },
+          "reference": {
+            "extractor": "(https:\\/\\/da\\.gd\\/\\w+)",
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          },
+          "counterparty": {
+            "receiver": [
+              "(?:payment for|paid .*? for)\\s+(.+?)(?=(?:\\s+on\\s*:?\\s*(?:\\d|[A-Z]{3})|\\s+at\\s+\\d|\\.\\s*(?:Your|Thank|Ref|Reference|Txn|Transaction|New|Current|Available|Avail|Remaining|Please|The)|\\s+(?:Your|Thank|Ref|Reference|Txn|Transaction|New balance|Current balance|Available balance|Avail balance|Remaining balance|Charge|VAT|Date|With Bank Ref|Bank Ref)|,\\s*(?:Txn|Reference|Ref)|\\s+with\\s+(?:transaction|reference|Bank Ref)|\\s+and\\s+(?:credited|debited|transferred|posted)|$))"
+            ]
+          }
+        },
+        {
+          "id": "cbe_birr_fallback_004",
+          "enabled": true,
+          "priority": 4,
+          "type": "DEBIT",
+          "matchers": {
+            "debit": "sent"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "ETB|Br"
+          },
+          "extractors": {
+            "amount": "sent ([\\d,.]+)Br\\.",
+            "balance": "balance is ([\\d,.]+)Br\\.",
+            "account": "account no (\\b\\w{10,}\\b)",
+            "link": "https?://\\S+"
+          },
+          "reference": {
+            "extractor": "https?://[\\w.-]+(?:/[\\w.-]*)*",
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          },
+          "counterparty": {
+            "receiver": [
+              "(?:paid|payment|sent|transfered|transferred|debited|recharged|bought|contributed|gifted|top-up).*?\\sto\\s+(.+?)(?=(?:\\s+on\\s*:?\\s*(?:\\d|[A-Z]{3})|\\s+at\\s+\\d|\\.\\s*(?:Your|Thank|Ref|Reference|Txn|Transaction|New|Current|Available|Avail|Remaining|Please|The)|\\s+(?:Your|Thank|Ref|Reference|Txn|Transaction|New balance|Current balance|Available balance|Avail balance|Remaining balance|Charge|VAT|Date|With Bank Ref|Bank Ref)|,\\s*(?:Txn|Reference|Ref)|\\s+with\\s+(?:transaction|reference|Bank Ref)|\\s+and\\s+(?:credited|debited|transferred|posted)|$))"
+            ]
+          }
+        },
+        {
+          "id": "cbe_birr_fallback_005",
+          "enabled": true,
+          "priority": 5,
+          "type": "CREDIT",
+          "matchers": {
+            "credit": "received"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "ETB|Br"
+          },
+          "extractors": {
+            "amount": "\\breceived ([\\d,.]+)Br\\b",
+            "balance": "\\bbalance is ([\\d,.]+)Br\\b",
+            "account": "\\b(\\d{10}|\\*{5}\\d{4}|\\d{4}[ -]?\\d{4})\\b"
+          },
+          "reference": {
+            "extractor": null,
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          },
+          "counterparty": {
+            "creditor": [
+              "(?:received|credited|deposited|transfer(?:red|ed)? to|fund transfer).*?\\sfrom\\s+(.+?)(?=(?:\\s+on\\s*:?\\s*(?:\\d|[A-Z]{3})|\\s+at\\s+\\d|\\.\\s*(?:Your|Thank|Ref|Reference|Txn|Transaction|New|Current|Available|Avail|Remaining|Please|The)|\\s+(?:Your|Thank|Ref|Reference|Txn|Transaction|New balance|Current balance|Available balance|Avail balance|Remaining balance|Charge|VAT|Date|With Bank Ref|Bank Ref)|,\\s*(?:Txn|Reference|Ref)|\\s+with\\s+(?:transaction|reference|Bank Ref)|\\s+and\\s+(?:credited|debited|transferred|posted)|$))"
+            ]
+          }
+        },
+        {
+          "id": "cbe_birr_fallback_006",
+          "enabled": true,
+          "priority": 6,
+          "type": "CREDIT",
+          "matchers": {
+            "credit": "received"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "ETB|Br"
+          },
+          "extractors": {
+            "amount": "\\b(?:received|credited|deposited|transferred to)\\s+([\\d,.]+)Br\\b",
+            "account": "\\b(\\d{10}|\\*{5}\\d{4}|\\d{4}[ -]?\\d{4})\\b"
+          },
+          "reference": {
+            "extractor": null,
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          },
+          "counterparty": {
+            "creditor": [
+              "(?:received|credited|deposited|transfer(?:red|ed)? to|fund transfer).*?\\sfrom\\s+(.+?)(?=(?:\\s+on\\s*:?\\s*(?:\\d|[A-Z]{3})|\\s+at\\s+\\d|\\.\\s*(?:Your|Thank|Ref|Reference|Txn|Transaction|New|Current|Available|Avail|Remaining|Please|The)|\\s+(?:Your|Thank|Ref|Reference|Txn|Transaction|New balance|Current balance|Available balance|Avail balance|Remaining balance|Charge|VAT|Date|With Bank Ref|Bank Ref)|,\\s*(?:Txn|Reference|Ref)|\\s+with\\s+(?:transaction|reference|Bank Ref)|\\s+and\\s+(?:credited|debited|transferred|posted)|$))"
+            ]
+          }
+        },
+        {
+          "id": "cbe_birr_fallback_007",
+          "enabled": true,
+          "priority": 7,
+          "type": "CREDIT",
+          "matchers": {
+            "credit": "credited"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "ETB|Br"
+          },
+          "extractors": {
+            "amount": "([\\d,.]+)Br\\. is credited",
+            "balance": "Your CBE Birr balance is ([\\d,.]+)Br\\.",
+            "account": "account no (\\b\\w{10,}\\b)"
+          },
+          "reference": {
+            "extractor": null,
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        },
+        {
+          "id": "cbe_birr_fallback_008",
+          "enabled": true,
+          "priority": 8,
+          "type": "DEBIT",
+          "matchers": {
+            "debit": "ወጪ\\s*አድርገዋል"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "Br\\.|Birr"
+          },
+          "extractors": {
+            "amount": "([\\d,.]+)Br\\.",
+            "balance": "ያሎት\\s*ቀሪ\\s*ሂሳብ\\s*([\\d,.]+)Br\\.",
+            "account": "ከ\\s*(\\d{6})\\s*-\\s*ATM"
+          },
+          "reference": {
+            "extractor": null,
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        },
+        {
+          "id": "cbe_birr_fallback_009",
+          "enabled": true,
+          "priority": 9,
+          "type": "DEBIT",
+          "matchers": {
+            "debit": "paid|transferred to"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "ETB|Br\\."
+          },
+          "extractors": {
+            "amount": "made ([\\d,.]+)Br\\.",
+            "balance": "balance is ([\\d,.]+)Br\\.",
+            "account": "account no (\\b\\d{10}\\b|\\b\\d{4}[ -]?\\d{4}\\b|\\b\\d{4} \\d{4}\\b|\\b\\*{5}\\d{4}\\b)",
+            "link": "Reference Number (\\d+@\\d+)|Txn ID (\\w+)"
+          },
+          "reference": {
+            "extractor": "Reference Number (\\d+@\\d+)|Txn ID (\\w+)",
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        },
+        {
+          "id": "cbe_birr_fallback_010",
+          "enabled": true,
+          "priority": 10,
+          "type": "DEBIT",
+          "matchers": {
+            "debit": "paid"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "ETB|Br"
+          },
+          "extractors": {
+            "amount": "you paid ([\\d,.]+)Br",
+            "balance": "account balance is ([\\d,.]+)Br",
+            "account": "(\b(?:\b\\d{4}[- ]?\\d{4}\\b|\\b\\d{4} \\d{4}\\b|\\b\\*{5}\\d{4}\\b)\b)",
+            "link": "(https?://\\S+)"
+          },
+          "reference": {
+            "extractor": "(https?://\\S+)",
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          },
+          "counterparty": {
+            "receiver": [
+              "(?:paid|payment|sent|transfered|transferred|debited|recharged|bought|contributed|gifted|top-up).*?\\sto\\s+(.+?)(?=(?:\\s+on\\s*:?\\s*(?:\\d|[A-Z]{3})|\\s+at\\s+\\d|\\.\\s*(?:Your|Thank|Ref|Reference|Txn|Transaction|New|Current|Available|Avail|Remaining|Please|The)|\\s+(?:Your|Thank|Ref|Reference|Txn|Transaction|New balance|Current balance|Available balance|Avail balance|Remaining balance|Charge|VAT|Date|With Bank Ref|Bank Ref)|,\\s*(?:Txn|Reference|Ref)|\\s+with\\s+(?:transaction|reference|Bank Ref)|\\s+and\\s+(?:credited|debited|transferred|posted)|$))"
+            ]
+          }
+        },
+        {
+          "id": "cbe_birr_fallback_011",
+          "enabled": true,
+          "priority": 11,
+          "type": "DEBIT",
+          "matchers": {
+            "debit": "withdrawn"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "ETB|Br"
+          },
+          "extractors": {
+            "amount": "withdrawn ([\\d,.]+)Br",
+            "balance": "balance is ([\\d,.]+)Br",
+            "account": "your account no (\\b\\w{10,}\\b)",
+            "link": "https?://\\S+"
+          },
+          "reference": {
+            "extractor": "https?://[\\w.-]+(?:/[\\w.-]*)*",
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        },
+        {
+          "id": "cbe_birr_fallback_013",
+          "enabled": true,
+          "priority": 13,
+          "type": "DEBIT",
+          "matchers": {
+            "debit": "Ticket purchase"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "Br"
+          },
+          "extractors": {
+            "amount": "Your ([\\d,.]+)Br",
+            "account": "([\\d\\s-]+|\\*{5}\\d{4})"
+          },
+          "reference": {
+            "extractor": null,
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        },
+        {
+          "id": "cbe_birr_fallback_014",
+          "enabled": true,
+          "priority": 14,
+          "type": "DEBIT",
+          "matchers": {
+            "debit": "kaffaltaniirtu"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "Br\\."
+          },
+          "extractors": {
+            "amount": "meeshaa bittaniif,\\s+lakkoofsa nagahee\\s+\\w+\\s+tiin\\s+qarshii\\s+([\\d,.]+)Br\\.",
+            "balance": "Hafteen herreega CBE Birr keessan\\s+([\\d,.]+)Br\\.",
+            "account": "lakkoofsa nagahee\\s+(\\w+)"
+          },
+          "reference": {
+            "extractor": null,
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        },
+        {
+          "id": "cbe_birr_fallback_015",
+          "enabled": true,
+          "priority": 15,
+          "type": "CREDIT",
+          "matchers": {
+            "credit": "transfer to"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "ETB|Br"
+          },
+          "extractors": {
+            "amount": "made (\\d{1,3}(?:[,.]\\d{3})*(?:[,.]\\d{2})?)Br\\.",
+            "balance": "balance is (\\d{1,3}(?:[,.]\\d{3})*(?:[,.]\\d{2})?)Br\\.",
+            "account": "account no (\\b\\w{10,}\\b|\\b\\d{4}[ -]?\\d{4}\\b|\\b\\d{4} \\d{4}\\b|\\b\\*{5}\\d{4}\\b)",
+            "link": "Reference Number (\\d+@\\d+)|Txn ID (\\w+)"
+          },
+          "reference": {
+            "extractor": "Reference Number (\\d+@\\d+)|Txn ID (\\w+)",
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        },
+        {
+          "id": "cbe_birr_fallback_016",
+          "enabled": true,
+          "priority": 16,
+          "type": "DEBIT",
+          "matchers": {
+            "debit": "qarshii\\s+([\\d,.]+)Br\\."
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "Br\\."
+          },
+          "extractors": {
+            "amount": "qarshii\\s+([\\d,.]+)Br\\.",
+            "balance": "Hafteen herreega keessanii\\s+([\\d,.]+)Br\\.",
+            "account": "lakkoofsa nagahee\\s+(\\w+)"
+          },
+          "reference": {
+            "extractor": null,
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        },
+        {
+          "id": "cbe_birr_fallback_017",
+          "enabled": true,
+          "priority": 17,
+          "type": "CREDIT",
+          "matchers": {
+            "credit": "Deposit"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "Br"
+          },
+          "extractors": {
+            "amount": "made a ([\n\\d,.]+)Br",
+            "balance": "account balance is ([\n\\d,.]+)Br",
+            "account": "your Saving-Account"
+          },
+          "reference": {
+            "extractor": null,
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        },
+        {
+          "id": "cbe_birr_fallback_018",
+          "enabled": true,
+          "priority": 18,
+          "type": "DEBIT",
+          "matchers": {
+            "debit": "paid"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "ETB|Br"
+          },
+          "extractors": {
+            "amount": "paid ([\\d,]+\\.\\d{2})Br",
+            "account": "account no (\\b\\w{0,5}\\d{4}\\b)"
+          },
+          "reference": {
+            "extractor": null,
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          },
+          "counterparty": {
+            "receiver": [
+              "(?:payment for|paid .*? for)\\s+(.+?)(?=(?:\\s+on\\s*:?\\s*(?:\\d|[A-Z]{3})|\\s+at\\s+\\d|\\.\\s*(?:Your|Thank|Ref|Reference|Txn|Transaction|New|Current|Available|Avail|Remaining|Please|The)|\\s+(?:Your|Thank|Ref|Reference|Txn|Transaction|New balance|Current balance|Available balance|Avail balance|Remaining balance|Charge|VAT|Date|With Bank Ref|Bank Ref)|,\\s*(?:Txn|Reference|Ref)|\\s+with\\s+(?:transaction|reference|Bank Ref)|\\s+and\\s+(?:credited|debited|transferred|posted)|$))"
+            ]
+          }
+        },
+        {
+          "id": "cbe_birr_fallback_019",
+          "enabled": true,
+          "priority": 19,
+          "type": "DEBIT",
+          "matchers": {
+            "debit": "እቃ\\s*ግዢ"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "Br|Birr|BIRR"
+          },
+          "extractors": {
+            "amount": "የ\\s*([\\d,.]+)Br\\.",
+            "balance": "ቀሪ\\s*ሂሳብ\\s*([\\d,.]+Br)",
+            "account": "ለ?\\s*(\\d{6,})\\s*[-\\s]?\\d{4,}"
+          },
+          "reference": {
+            "extractor": null,
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        },
+        {
+          "id": "cbe_birr_fallback_020",
+          "enabled": true,
+          "priority": 20,
+          "type": "DEBIT",
+          "matchers": {
+            "debit": "withdrawal"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "Br|birr"
+          },
+          "extractors": {
+            "amount": "withdrawal of ([\\d,]+\\.\\d{2})Br",
+            "balance": "account balance is ([\\d,]+\\.\\d{2})Br",
+            "account": "your saving account",
+            "link": "Txn ID is(\\w+)"
+          },
+          "reference": {
+            "extractor": "Txn ID is(\\w+)",
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        },
+        {
+          "id": "cbe_birr_fallback_021",
+          "enabled": true,
+          "priority": 21,
+          "type": "DEBIT",
+          "matchers": {
+            "debit": "qarshiin ([\\d,.]+)Br"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "ETB|Br"
+          },
+          "extractors": {
+            "amount": "qarshiin ([\\d,.]+)Br",
+            "balance": "Hafteen herreega keessanii ([\\d,.]+)Br",
+            "account": "lakkoofsa nagahee (\\w+)"
+          },
+          "reference": {
+            "extractor": null,
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        },
+        {
+          "id": "cbe_birr_fallback_022",
+          "enabled": true,
+          "priority": 22,
+          "type": "CREDIT",
+          "matchers": {
+            "credit": "ገቢ"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "Br|Birr|BIRR"
+          },
+          "extractors": {
+            "amount": "ላይ\\s*([\\d,.]+)Br\\.",
+            "balance": "ሂሳብ\\s*([\\d,.]+)Br\\.",
+            "account": "ቁጠር\\s*(\\w+)"
+          },
+          "reference": {
+            "extractor": null,
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        }
+      ],
+      "counterparty": {
+        "creditor": [
+          "from\\s+(.+?)\\s+on\\s+\\d",
+          "from\\s+(.+?)(?:,\\s*Txn|\\.\\s*Your|\\.Thank|\\s+Thank)"
+        ],
+        "receiver": [
+          "to\\s+(.+?)\\s+on\\s+\\d",
+          "to\\s+(.+?)(?:,\\s*Txn|\\.\\s*Your|\\.Thank|\\s+Thank)",
+          "payment for\\s+(.+?)\\s+for\\s+",
+          "payment for\\s+(.+?)\\s+on\\s+\\d",
+          "for\\s+(.+?)\\s+on\\s+\\d"
+        ]
+      }
+    },
+    {
+      "bankId": 1,
+      "bankKey": "cbe",
+      "displayName": "Commercial Bank of Ethiopia",
+      "senderIds": [
+        "CBE"
+      ],
+      "rules": [
+        {
+          "id": "cbe_fallback_001",
+          "enabled": true,
+          "priority": 1,
+          "type": "AUTO",
+          "matchers": {
+            "credit": "[Cc]redited",
+            "debit": "[Dd]ebited"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "ETB-disabled"
+          },
+          "extractors": {
+            "amount": "ETB(\\d{1,3}(?:,\\d{3})*(?:\\.\\d{2})?)",
+            "balance": "Your Current Balance is ETB (\\d+(?:,\\d{3})*(?:\\.\\d{1,2})?)",
+            "account": "Account (\\d\\*+(\\d{4}))",
+            "link": "(https://apps\\.cbe\\.com\\.et:\\d+/\\?id=[A-Z0-9]+)"
+          },
+          "reference": {
+            "extractor": "(https://apps\\.cbe\\.com\\.et:\\d+/\\?id=[A-Z0-9]+)",
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        },
+        {
+          "id": "cbe_fallback_002",
+          "enabled": true,
+          "priority": 2,
+          "type": "CREDIT",
+          "matchers": {
+            "credit": "credited"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "ETB"
+          },
+          "extractors": {
+            "amount": "credited with ETB ([\\d,.]+)",
+            "balance": "Acct Bal: ETB ([\\d,.]+)",
+            "account": "account (\\*+(\\d{4}))"
+          },
+          "reference": {
+            "extractor": null,
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        },
+        {
+          "id": "cbe_fallback_003",
+          "enabled": true,
+          "priority": 3,
+          "type": "DEBIT",
+          "matchers": {
+            "debit": "debited"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "ETB"
+          },
+          "extractors": {
+            "amount": "debited with ETB -([\\d,.]+)",
+            "balance": "Acct Bal: ETB ([\\d,.]+)",
+            "account": "account (\\*+(\\d{4}))"
+          },
+          "reference": {
+            "extractor": null,
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        },
+        {
+          "id": "cbe_fallback_004",
+          "enabled": true,
+          "priority": 4,
+          "type": "CREDIT",
+          "matchers": {
+            "credit": "(credited|debited)"
+          },
+          "currency": {
+            "code": "USD",
+            "matcher": "USD"
+          },
+          "extractors": {
+            "amount": "credited with USD ([\\d,.]+)",
+            "balance": "Current Balance is USD ([\\d,.]+)",
+            "account": "your Account(?: number)?\\s+(\\d+\\*{8}\\d{4})"
+          },
+          "reference": {
+            "extractor": null,
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        }
+      ],
+      "counterparty": {
+        "creditor": [],
+        "receiver": []
+      }
+    },
+    {
+      "bankId": 4,
+      "bankKey": "dashen",
+      "displayName": "Dashen Bank",
+      "senderIds": [
+        "Dashen Bank"
+      ],
+      "rules": [
+        {
+          "id": "dashen_fallback_000",
+          "enabled": true,
+          "priority": 0,
+          "type": "CREDIT",
+          "matchers": {
+            "credit": "credited"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "ETB"
+          },
+          "extractors": {
+            "amount": "ETB\\s(\\d+(?:,\\d{3})*(?:\\.\\d{1,2})?)",
+            "balance": "current balance is ETB\\s(\\d+(?:,\\d{3})*(?:\\.\\d{1,2})?)",
+            "account": "account\\s'(\\d{4}\\*{2}\\d{4})'"
+          },
+          "reference": {
+            "extractor": null,
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        },
+        {
+          "id": "dashen_fallback_001",
+          "enabled": true,
+          "priority": 1,
+          "type": "DEBIT",
+          "matchers": {
+            "debit": "withdrawn"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "ETB"
+          },
+          "extractors": {
+            "amount": "withdrawn ETB ([\n\r\t ]*[\u0000-9,.]+)",
+            "balance": "current balance is ETB ([\n\r\t ]*[\u0000-9,.]+)",
+            "account": "account '(\\d{4}\\*{5}\\d{4})'"
+          },
+          "reference": {
+            "extractor": null,
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        },
+        {
+          "id": "dashen_fallback_003",
+          "enabled": true,
+          "priority": 3,
+          "type": "CREDIT",
+          "matchers": {
+            "credit": "has transferred .*? as check payment"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "ETB"
+          },
+          "extractors": {
+            "amount": "transferred ETB ([\\d,\\.]+)",
+            "balance": "Your current balance is ETB ([\\d,\\.]+)",
+            "account": "account '(\\d{4}\\*{5}\\d{4})'"
+          },
+          "reference": {
+            "extractor": null,
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        },
+        {
+          "id": "dashen_fallback_004",
+          "enabled": true,
+          "priority": 4,
+          "type": "DEBIT",
+          "matchers": {
+            "debit": "debited"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "ETB"
+          },
+          "extractors": {
+            "amount": "ETB ([\\d,]+\\.\\d{2})",
+            "balance": "Your current balance is ETB ([\\d,]+\\.\\d{2})",
+            "account": "account '([0-9]{4}\\*{6}[0-9]{3})'"
+          },
+          "reference": {
+            "extractor": null,
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        },
+        {
+          "id": "dashen_fallback_008",
+          "enabled": true,
+          "priority": 8,
+          "type": "DEBIT",
+          "matchers": {
+            "debit": "withdrawn"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "ETB"
+          },
+          "extractors": {
+            "amount": "withdrawn ETB ([\\d,.]+)",
+            "balance": "current balance is ETB ([\\d,.]+)",
+            "account": "account '(\\d{4}\\*{8}1)"
+          },
+          "reference": {
+            "extractor": null,
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        },
+        {
+          "id": "dashen_fallback_010",
+          "enabled": true,
+          "priority": 10,
+          "type": "DEBIT",
+          "matchers": {
+            "debit": "withdrawn"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "ETB"
+          },
+          "extractors": {
+            "amount": "withdrawn ETB ([\\d,\\.]+)",
+            "balance": "current balance is ETB ([\\d,\\.]+)",
+            "account": "your account '([\\d*]+)'"
+          },
+          "reference": {
+            "extractor": null,
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        },
+        {
+          "id": "dashen_fallback_012",
+          "enabled": true,
+          "priority": 12,
+          "type": "CREDIT",
+          "matchers": {
+            "credit": "received"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "ETB"
+          },
+          "extractors": {
+            "amount": "received ETB ([\\d,.]+)",
+            "balance": "account balance is ETB ([\\d,.]+)",
+            "account": "account number (\\d{4} \\*{5}\\d{4}|\\d{4}-\\d{4}|\\d{4}\\d{4})"
+          },
+          "reference": {
+            "extractor": null,
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          },
+          "counterparty": {
+            "creditor": [
+              "(?:received|credited|deposited|transfer(?:red|ed)? to|fund transfer).*?\\sfrom\\s+(.+?)(?=(?:\\s+on\\s*:?\\s*(?:\\d|[A-Z]{3})|\\s+at\\s+\\d|\\.\\s*(?:Your|Thank|Ref|Reference|Txn|Transaction|New|Current|Available|Avail|Remaining|Please|The)|\\s+(?:Your|Thank|Ref|Reference|Txn|Transaction|New balance|Current balance|Available balance|Avail balance|Remaining balance|Charge|VAT|Date|With Bank Ref|Bank Ref)|,\\s*(?:Txn|Reference|Ref)|\\s+with\\s+(?:transaction|reference|Bank Ref)|\\s+and\\s+(?:credited|debited|transferred|posted)|$))"
+            ]
+          }
+        },
+        {
+          "id": "dashen_fallback_013",
+          "enabled": true,
+          "priority": 13,
+          "type": "CREDIT",
+          "matchers": {
+            "credit": "credited"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "ETB"
+          },
+          "extractors": {
+            "amount": "credited as reversal with ETB ([\\d,.]+)",
+            "balance": "Your current balance is ETB ([\\d,.]+)",
+            "account": "account '([0-9]{4}\\*{5}[0-9]{4})'"
+          },
+          "reference": {
+            "extractor": null,
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        }
+      ],
+      "counterparty": {
+        "creditor": [],
+        "receiver": []
+      }
+    },
+    {
+      "bankId": 8,
+      "bankKey": "mpesa",
+      "displayName": "M-Pesa",
+      "senderIds": [
+        "MPESA"
+      ],
+      "rules": [
+        {
+          "id": "mpesa_fallback_000",
+          "enabled": true,
+          "priority": 0,
+          "type": "CREDIT",
+          "matchers": {
+            "credit": "received"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "Birr"
+          },
+          "extractors": {
+            "amount": "received (\\d+(?:,\\d{3})*(?:\\.\\d{1,2})?) Birr",
+            "balance": "current M-PESA balance is (\\d+(?:,\\d{3})*(?:\\.\\d{1,2})?) Birr"
+          },
+          "reference": {
+            "extractor": null,
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        },
+        {
+          "id": "mpesa_fallback_001",
+          "enabled": true,
+          "priority": 1,
+          "type": "DEBIT",
+          "matchers": {
+            "debit": "paid"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "Birr"
+          },
+          "extractors": {
+            "amount": "paid (\\d+(?:,\\d{3})*(?:\\.\\d{1,2})?) Birr",
+            "balance": "new M-PESA balance is (\\d+(?:,\\d{3})*(?:\\.\\d{1,2})?) Birr"
+          },
+          "reference": {
+            "extractor": null,
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        },
+        {
+          "id": "mpesa_fallback_002",
+          "enabled": true,
+          "priority": 2,
+          "type": "DEBIT",
+          "matchers": {
+            "debit": "bought"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "Birr"
+          },
+          "extractors": {
+            "amount": "bought a Safaricom bundle of (\\d+(?:,\\d{3})*(?:\\.\\d{1,2})?) Birr",
+            "balance": "Your current M-PESA balance is (\\d+(?:,\\d{3})*(?:\\.\\d{1,2})?) Birr"
+          },
+          "reference": {
+            "extractor": null,
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          },
+          "classification": {
+            "hints": [
+              {
+                "id": "mpesa_fallback_002_hint_00",
+                "categoryKey": "air_time_0",
+                "matcher": "\\byou\\s+have bought a Safaricom bundle\\b"
+              }
+            ]
+          }
+        },
+        {
+          "id": "mpesa_fallback_003",
+          "enabled": true,
+          "priority": 3,
+          "type": "CREDIT",
+          "matchers": {
+            "credit": "ተቀብለዋል"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "ብር"
+          },
+          "extractors": {
+            "amount": "([\\d+,.]+) ብር ከ",
+            "balance": "የእርስዎ አሁን ያለው የM-PESA ቀሪ ሒሳብ ([\\d+,.]+) ብር ነው"
+          },
+          "reference": {
+            "extractor": null,
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        },
+        {
+          "id": "mpesa_fallback_004",
+          "enabled": true,
+          "priority": 4,
+          "type": "DEBIT",
+          "matchers": {
+            "debit": "ገዝተዋል"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "ብር"
+          },
+          "extractors": {
+            "amount": "የ([\\d,]+\\.\\d{2}) ብር",
+            "balance": "የM-PESA ቀሪ ሒሳብ ([\\d,]+\\.\\d{2}) ብር ነው"
+          },
+          "reference": {
+            "extractor": null,
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          },
+          "classification": {
+            "hints": [
+              {
+                "id": "mpesa_fallback_004_hint_00",
+                "categoryKey": "air_time_0",
+                "matcher": "\\s+(የሳፋሪኮም ጥቅል|የአየር ሰዓት)\\s+"
+              }
+            ]
+          }
+        },
+        {
+          "id": "mpesa_fallback_005",
+          "enabled": true,
+          "priority": 5,
+          "type": "DEBIT",
+          "matchers": {
+            "debit": "ከፍለዋል"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "ብር"
+          },
+          "extractors": {
+            "amount": "([\\d,.]+) ብር ለ",
+            "balance": "የM-PESA ቀሪ ሒሳብ ([\\d,.]+) ብር ነው",
+            "link": "https://bit.ly/M-PESA_SafaricomEthiopia"
+          },
+          "reference": {
+            "extractor": "https://bit.ly/M-PESA_SafaricomEthiopia",
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        },
+        {
+          "id": "mpesa_fallback_006",
+          "enabled": true,
+          "priority": 6,
+          "type": "DEBIT",
+          "matchers": {
+            "debit": "sent"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "Birr"
+          },
+          "extractors": {
+            "amount": "sent ([\\d,.]+) Birr",
+            "balance": "Your current M-PESA balance is ([\\d,.]+) Birr"
+          },
+          "reference": {
+            "extractor": null,
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        },
+        {
+          "id": "mpesa_fallback_007",
+          "enabled": true,
+          "priority": 7,
+          "type": "DEBIT",
+          "matchers": {
+            "debit": "bought"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "Birr"
+          },
+          "extractors": {
+            "amount": "bought ([\\d,.]+) Birr",
+            "balance": "Your new M-PESA balance is ([\\d,.]+) Birr",
+            "link": "https?://[\\w.-]+(?:/[\\w.-]*)*"
+          },
+          "reference": {
+            "extractor": "https?://[\\w.-]+(?:/[\\w.-]*)*",
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          },
+          "classification": {
+            "hints": [
+              {
+                "id": "mpesa_fallback_007_hint_00",
+                "categoryKey": "air_time_0",
+                "matcher": "airtime for"
+              }
+            ]
+          }
+        },
+        {
+          "id": "mpesa_fallback_008",
+          "enabled": true,
+          "priority": 8,
+          "type": "CREDIT",
+          "matchers": {
+            "credit": "awarded"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "Birr"
+          },
+          "extractors": {
+            "amount": "have been awarded with\\s+([\\d,.]+) Birr",
+            "balance": "Your New M-PESA balance is ([\\d,.]+) Birr"
+          },
+          "reference": {
+            "extractor": null,
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        },
+        {
+          "id": "mpesa_fallback_009",
+          "enabled": true,
+          "priority": 9,
+          "type": "DEBIT",
+          "matchers": {
+            "debit": "for ([\\d,.]+) Birr"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "Birr"
+          },
+          "extractors": {
+            "amount": "for ([\\d,.]+) Birr",
+            "balance": "Your current M-PESA balance is ([\\d,.]+) Birr"
+          },
+          "reference": {
+            "extractor": null,
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        },
+        {
+          "id": "mpesa_fallback_010",
+          "enabled": true,
+          "priority": 10,
+          "type": "CREDIT",
+          "matchers": {
+            "credit": "received|refunded"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "(ETB|Birr|BIRR)"
+          },
+          "extractors": {
+            "amount": "refund of ([\\d,.]+) Birr",
+            "balance": "Your New M-PESA balance is ([\\d,.]+) Birr"
+          },
+          "reference": {
+            "extractor": null,
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        },
+        {
+          "id": "mpesa_fallback_011",
+          "enabled": true,
+          "priority": 11,
+          "type": "CREDIT",
+          "matchers": {
+            "credit": "ሽልማት አግኝተዋል"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "ብር"
+          },
+          "extractors": {
+            "amount": "ገንዘብ በማስተላለፍዎ ([\\d,.]+) ብር",
+            "balance": "M-PESA ቀሪ ሂሳብ ([\\d,.]+) ብር"
+          },
+          "reference": {
+            "extractor": null,
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        },
+        {
+          "id": "mpesa_fallback_012",
+          "enabled": true,
+          "priority": 12,
+          "type": "CREDIT",
+          "matchers": {
+            "credit": "reward"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "Birr"
+          },
+          "extractors": {
+            "amount": "reward of ([\\d,.]+) Birr",
+            "balance": "Your New M-PESA balance is ([\\d,.]+) Birr"
+          },
+          "reference": {
+            "extractor": null,
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        },
+        {
+          "id": "mpesa_fallback_013",
+          "enabled": true,
+          "priority": 13,
+          "type": "CREDIT",
+          "matchers": {
+            "credit": "isin dhaqqabeera"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "Qarshii|ETB"
+          },
+          "extractors": {
+            "amount": "maallaqa Qarshii ([\\d,.]+)",
+            "balance": "Hafteen herrega M-PESA keessan ammaaQarshii ([\\d,.]+)"
+          },
+          "reference": {
+            "extractor": null,
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        },
+        {
+          "id": "mpesa_fallback_014",
+          "enabled": true,
+          "priority": 14,
+          "type": "DEBIT",
+          "matchers": {
+            "debit": "kaffaltanii jirtu"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "(?:Qarshii|ETB)"
+          },
+          "extractors": {
+            "amount": ",\\s+Qarshii\\s*([\\d,.]+)",
+            "balance": "Hafteen herrega M-PESA keessan ammaa Qarshii\\s*([\\d,.]+)"
+          },
+          "reference": {
+            "extractor": null,
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        },
+        {
+          "id": "mpesa_fallback_015",
+          "enabled": true,
+          "priority": 15,
+          "type": "CREDIT",
+          "matchers": {
+            "credit": "awarded"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "Birr"
+          },
+          "extractors": {
+            "amount": "awarded ([\\d,.]+) Birr",
+            "account": "account no (\\*+\\d+|\\d{4}[- ]?\\d{4}|\\d{4} \\d{4})"
+          },
+          "reference": {
+            "extractor": null,
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        },
+        {
+          "id": "mpesa_fallback_016",
+          "enabled": true,
+          "priority": 16,
+          "type": "CREDIT",
+          "matchers": {
+            "credit": "ሽልማት"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "([\\d,.]+) ብር"
+          },
+          "extractors": {
+            "amount": "([\\d,.]+) ብር",
+            "balance": "([\\d,.]+) ብር",
+            "account": "ከኢትዮጵያ ንግድ ባንክ ወደ (\\w+)"
+          },
+          "reference": {
+            "extractor": null,
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        },
+        {
+          "id": "mpesa_fallback_017",
+          "enabled": true,
+          "priority": 17,
+          "type": "DEBIT",
+          "matchers": {
+            "debit": "Kaffaltii daddabarsa Qarshii\\s*([\\d,.]+)"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "Qarshii|ETB"
+          },
+          "extractors": {
+            "amount": "Qarshii\\s*([\\d,.]+)",
+            "balance": "Hafteen herrega M-PESA keessan ammaa Qarshii\\s*([\\d,.]+)",
+            "account": "kuufama ([\\w\\s]+)\\s*(\\d{10})",
+            "link": "https?://[\\w.-]+(?:/[\\w.-]*)*"
+          },
+          "reference": {
+            "extractor": "https?://[\\w.-]+(?:/[\\w.-]*)*",
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        },
+        {
+          "id": "mpesa_fallback_018",
+          "enabled": true,
+          "priority": 18,
+          "type": "CREDIT",
+          "matchers": {
+            "credit": "received"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "ETB|Birr"
+          },
+          "extractors": {
+            "amount": "received salary of ([\\d,]+\\.\\d{2}) Birr",
+            "balance": "Your new M-PESA balance is ([\\d,]+\\.\\d{2}) Birr"
+          },
+          "reference": {
+            "extractor": null,
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        },
+        {
+          "id": "mpesa_fallback_019",
+          "enabled": true,
+          "priority": 19,
+          "type": "CREDIT",
+          "matchers": {
+            "credit": "received"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "Birr"
+          },
+          "extractors": {
+            "amount": "AM (\\d+\\.\\d{2}) Birr",
+            "balance": "balance is (\\d{1,3}(?:,\\d{3})*\\.\\d{2}) Birr",
+            "account": "Account Number\\s+([\\w\\s]+) balance"
+          },
+          "reference": {
+            "extractor": null,
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          },
+          "counterparty": {
+            "creditor": [
+              "received from\\s+(.+?)\\.\\s+Account Number"
+            ]
+          }
+        },
+        {
+          "id": "mpesa_fallback_026",
+          "enabled": true,
+          "priority": 26,
+          "type": "DEBIT",
+          "matchers": {
+            "debit": "ውድ"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "ETB|ብር"
+          },
+          "extractors": {
+            "amount": "([\\d,.]+) ብር ለ",
+            "balance": "ቀሪ ሂሳብ ([\\d,.]+) ብር",
+            "account": "([\\d\\s-]+|\\*{5}\\d{4})"
+          },
+          "reference": {
+            "extractor": null,
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        },
+        {
+          "id": "mpesa_fallback_028",
+          "enabled": true,
+          "priority": 28,
+          "type": "CREDIT",
+          "matchers": {
+            "credit": "received"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "Birr"
+          },
+          "extractors": {
+            "amount": "received cashback of ([\\d,.]+) Birr",
+            "balance": "Your new M-PESA balance is ([\\d,.]+) Birr",
+            "account": "your account no (\\b\\w{0,5}\\d{4}\\b)"
+          },
+          "reference": {
+            "extractor": null,
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        },
+        {
+          "id": "mpesa_fallback_033",
+          "enabled": true,
+          "priority": 33,
+          "type": "DEBIT",
+          "matchers": {
+            "debit": "withdrawn"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "ETB|Birr"
+          },
+          "extractors": {
+            "amount": "withdrawn ([\\d,.]+) Birr",
+            "balance": "Your current M-PESA balance is ([\\d,.]+) Birr",
+            "account": "account no (\\b\\w{0,5}\\d{4}\\b)",
+            "link": "https?://[\\w.-]+(?:/[\\w.-]*)*"
+          },
+          "reference": {
+            "extractor": "https?://[\\w.-]+(?:/[\\w.-]*)*",
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          },
+          "counterparty": {
+            "receiver": [
+              "(?:withdrawn|withdraw).*?\\sfrom Agent\\s+(.+?)(?=(?:\\s+on\\s*:?\\s*(?:\\d|[A-Z]{3})|\\s+at\\s+\\d|\\.\\s*(?:Your|Thank|Ref|Reference|Txn|Transaction|New|Current|Available|Avail|Remaining|Please|The)|\\s+(?:Your|Thank|Ref|Reference|Txn|Transaction|New balance|Current balance|Available balance|Avail balance|Remaining balance|Charge|VAT|Date|With Bank Ref|Bank Ref)|,\\s*(?:Txn|Reference|Ref)|\\s+with\\s+(?:transaction|reference|Bank Ref)|\\s+and\\s+(?:credited|debited|transferred|posted)|$))"
+            ]
+          }
+        },
+        {
+          "id": "mpesa_fallback_034",
+          "enabled": true,
+          "priority": 34,
+          "type": "CREDIT",
+          "matchers": {
+            "credit": "credited"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "Birr"
+          },
+          "extractors": {
+            "amount": "([\\d,.]+) Birr is credited",
+            "balance": "Your new M-PESA account balance is ([\\d,.]+) Birr",
+            "account": "your M-PESA account"
+          },
+          "reference": {
+            "extractor": null,
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        },
+        {
+          "id": "mpesa_fallback_035",
+          "enabled": true,
+          "priority": 35,
+          "type": "CREDIT",
+          "matchers": {
+            "credit": "contributed"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "Birr"
+          },
+          "extractors": {
+            "amount": "contributed\\s+([\\d,.]+)\\s+Birr",
+            "balance": "Your new\\s+M-PESA\\s+balance\\s+is\\s+([\\d,.]+)\\s+Birr",
+            "account": "account no (X+\\d+)"
+          },
+          "reference": {
+            "extractor": null,
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        },
+        {
+          "id": "mpesa_fallback_036",
+          "enabled": true,
+          "priority": 36,
+          "type": "DEBIT",
+          "matchers": {
+            "debit": "gifted"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "Birr"
+          },
+          "extractors": {
+            "amount": "gifted ([\\d,.]+) Birr",
+            "balance": "Your current M-PESA balance is ([\\d,.]+) Birr",
+            "account": "251[0-9]{9}",
+            "link": "https?://[\\w.-]+(?:\\.[\\w.-]+)+[/\\w.-]*"
+          },
+          "reference": {
+            "extractor": "https?://[\\w.-]+(?:\\.[\\w.-]+)+[/\\w.-]*",
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        },
+        {
+          "id": "mpesa_fallback_039",
+          "enabled": true,
+          "priority": 39,
+          "type": "CREDIT",
+          "matchers": {
+            "credit": "received"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "\\b(Birr|ETB|BIRR)\\b"
+          },
+          "extractors": {
+            "amount": "\\b([\\d,.]+)\\s*Birr\\s*(?:received|credited|deposited|transferred to)\\b",
+            "balance": "\\b(?:Account Number|balance is|available balance)\\s*is\\s*([\\d,.]+)\\s*Birr\\b",
+            "account": "(?:\\b\\d{10}\\b|\\b\\d{3,4}[ -]?\\d{4}[ -]?\\d{4}\\b|\\b\\*{5}\\d{4}\\b)"
+          },
+          "reference": {
+            "extractor": null,
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          },
+          "counterparty": {
+            "creditor": [
+              "received from\\s+(.+?)\\.\\s+Account Number"
+            ]
+          }
+        },
+        {
+          "id": "mpesa_fallback_040",
+          "enabled": true,
+          "priority": 40,
+          "type": "CREDIT",
+          "matchers": {
+            "credit": "received"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "(ETB|Birr|BIRR)"
+          },
+          "extractors": {
+            "amount": "([\\d,.]+)\\s*Birr\\s*received",
+            "balance": "balance is\\s*([\\d,.]+)\\s*Birr",
+            "account": "(\b(?:\b\\d{10}\\b|\\d{3}[-\\s]?\\d{4}[-\\s]?\\d{4}|\\*{5}\\d{4})\\b)"
+          },
+          "reference": {
+            "extractor": null,
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          },
+          "counterparty": {
+            "creditor": [
+              "received from\\s+(.+?)\\.\\s+Account Number"
+            ]
+          }
+        },
+        {
+          "id": "mpesa_fallback_041",
+          "enabled": true,
+          "priority": 41,
+          "type": "DEBIT",
+          "matchers": {
+            "debit": "Overdraft amount used|access fees charged"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "ETB|Birr"
+          },
+          "extractors": {
+            "amount": "Overdraft amount used is ([\\d,.]+)Birr|access fees charged is ([\\d,.]+) Birr",
+            "balance": "Your total Overdraft outstanding amount is ([\\d,.]+) Birr",
+            "account": "account no (\\b\\w{0,5}\\d{4}\\b|\\b\\d{4}[- ]?\\d{4}\\b|\\b\\d{4} \\d{4}\\b)"
+          },
+          "reference": {
+            "extractor": null,
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        },
+        {
+          "id": "mpesa_fallback_042",
+          "enabled": true,
+          "priority": 42,
+          "type": "CREDIT",
+          "matchers": {
+            "credit": "cashback"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "Birr"
+          },
+          "extractors": {
+            "amount": "cashback of ([\\d,.]+) Birr",
+            "balance": "Your new M-PESA balance is ([\\d,.]+) Birr",
+            "account": "your M-PESA account"
+          },
+          "reference": {
+            "extractor": null,
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        },
+        {
+          "id": "mpesa_fallback_043",
+          "enabled": true,
+          "priority": 43,
+          "type": "DEBIT",
+          "matchers": {
+            "debit": "paid"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "ETB|Birr|BIRR"
+          },
+          "extractors": {
+            "amount": "([\\d,.]+) Birr",
+            "balance": "Your available limit is ([\\d,.]+) Birr",
+            "account": "account no (\\b\\w{3,}[- ]?\\d{4}\\b|\\b\\*{5}\\d{4}\\b|\\b\\d{4}[- ]?\\d{4}\\b|\\b\\d{4} \\d{4}\\b)"
+          },
+          "reference": {
+            "extractor": null,
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        },
+        {
+          "id": "mpesa_fallback_044",
+          "enabled": true,
+          "priority": 44,
+          "type": "CREDIT",
+          "matchers": {
+            "credit": "ተቀብለዋል"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "ብር"
+          },
+          "extractors": {
+            "amount": "([\\d.,]+) ብር",
+            "balance": "የM-PESA ቀሪ ሒሳብ ([\\d.,]+) ብር",
+            "account": "([^-]+-\\d+\\*{3}\\d{3})"
+          },
+          "reference": {
+            "extractor": null,
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        },
+        {
+          "id": "mpesa_fallback_046",
+          "enabled": true,
+          "priority": 46,
+          "type": "CREDIT",
+          "matchers": {
+            "credit": "received"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "Birr"
+          },
+          "extractors": {
+            "amount": "received ([\\d,.]+) Birr",
+            "balance": "Your new M-PESA balance is ([\\d,.]+) Birr",
+            "account": "account no (\\b\\w{0,5}\\d{4}\\b)",
+            "link": "(https?://[\\w.-]+(?:\\.[\\w.-]+)+[/\\w.-]*)"
+          },
+          "reference": {
+            "extractor": "(https?://[\\w.-]+(?:\\.[\\w.-]+)+[/\\w.-]*)",
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          },
+          "counterparty": {
+            "creditor": [
+              "(?:received|credited|deposited|transfer(?:red|ed)? to|fund transfer).*?\\sfrom\\s+(.+?)(?=(?:\\s+on\\s*:?\\s*(?:\\d|[A-Z]{3})|\\s+at\\s+\\d|\\.\\s*(?:Your|Thank|Ref|Reference|Txn|Transaction|New|Current|Available|Avail|Remaining|Please|The)|\\s+(?:Your|Thank|Ref|Reference|Txn|Transaction|New balance|Current balance|Available balance|Avail balance|Remaining balance|Charge|VAT|Date|With Bank Ref|Bank Ref)|,\\s*(?:Txn|Reference|Ref)|\\s+with\\s+(?:transaction|reference|Bank Ref)|\\s+and\\s+(?:credited|debited|transferred|posted)|$))"
+            ]
+          }
+        },
+        {
+          "id": "mpesa_fallback_048",
+          "enabled": true,
+          "priority": 48,
+          "type": "DEBIT",
+          "matchers": {
+            "debit": "አስተላልፈ"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "ETB|ብር"
+          },
+          "extractors": {
+            "amount": "([\\d,.]+) ብር",
+            "balance": "የ\\s*M-PESA ቀሪ\\s*ሒሳብ ([\\d,.]+) ብር",
+            "account": "ሒሳብ ቁጥር (\\d{10,}|\\d{4}[- ]?\\d{4}[- ]?\\d{4})",
+            "link": "https?://\\S+"
+          },
+          "reference": {
+            "extractor": "https?://\\S+",
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        },
+        {
+          "id": "mpesa_fallback_050",
+          "enabled": true,
+          "priority": 50,
+          "type": "CREDIT",
+          "matchers": {
+            "credit": "ተመላሽ"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "ETB|ብር"
+          },
+          "extractors": {
+            "amount": "([\\d,.]+) ብር ወደ M-PESA ሒሳብዎ ገቢ",
+            "balance": "የM-PESA ቀሪ ሒሳብ ([\\d,.]+) ብር",
+            "account": "SB[0-9]{4}[A-Z]{4}",
+            "link": "(https?://[\\w.-]+)"
+          },
+          "reference": {
+            "extractor": "(https?://[\\w.-]+)",
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        }
+      ],
+      "counterparty": {
+        "creditor": [],
+        "receiver": []
+      }
+    },
+    {
+      "bankId": 6,
+      "bankKey": "telebirr",
+      "displayName": "Telebirr",
+      "senderIds": [
+        "127"
+      ],
+      "rules": [
+        {
+          "id": "telebirr_fallback_000",
+          "enabled": true,
+          "priority": 0,
+          "type": "CREDIT",
+          "matchers": {
+            "credit": "received"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "ETB"
+          },
+          "extractors": {
+            "amount": "received  ETB (\\d+(?:,\\d{3})*(?:\\.\\d{1,2})?) by transaction number [A-Z0-9]+ on \\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2} from Awash International Bank S C",
+            "balance": "Your current balance is ETB (\\d+(?:,\\d{3})*(?:\\.\\d{1,2})?)"
+          },
+          "reference": {
+            "extractor": null,
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        },
+        {
+          "id": "telebirr_fallback_001",
+          "enabled": true,
+          "priority": 1,
+          "type": "DEBIT",
+          "matchers": {
+            "debit": "[Pp]aid"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "ETB"
+          },
+          "extractors": {
+            "amount": "paid ETB (\\d+(?:,\\d{3})*(?:\\.\\d{1,2})?)",
+            "balance": "Your\\s+(?:telebirr\\s+account|current)\\s+balance\\s+is\\s+ETB\\s+(\\d+(?:,\\d{3})*(?:\\.\\d{2})?)\\s*(telebirr\\s+account|current)?",
+            "link": "(https://transactioninfo\\.ethiotelecom\\.et/receipt/[A-Z0-9]+)"
+          },
+          "reference": {
+            "extractor": "(https://transactioninfo\\.ethiotelecom\\.et/receipt/[A-Z0-9]+)",
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          },
+          "classification": {
+            "hints": [
+              {
+                "id": "telebirr_fallback_001_hint_00",
+                "categoryKey": "air_time_0",
+                "matcher": "\\bfor package \\b"
+              },
+              {
+                "id": "telebirr_fallback_001_hint_01",
+                "categoryKey": "oth_0",
+                "matcher": "to Immigration and Citizenship Service"
+              },
+              {
+                "id": "telebirr_fallback_001_hint_02",
+                "categoryKey": "utl_0",
+                "matcher": "\\bYou\\s+have\\s+paid\\s+ETB\\s+\\d+(?:,\\d{3})*(?:\\.\\d{2})\\s+to\\s+pay\\s+bill\\s+for\\s+\\d{9}\\b",
+                "ruleId": "telebirr_fallback_001"
+              },
+              {
+                "id": "telebirr_fallback_001_hint_03",
+                "categoryKey": "coffee_0",
+                "matcher": "goods purchased from (\\d+) - Tomoca Camera on"
+              }
+            ]
+          }
+        },
+        {
+          "id": "telebirr_fallback_002",
+          "enabled": true,
+          "priority": 2,
+          "type": "AUTO",
+          "matchers": {
+            "credit": "received",
+            "debit": "debited"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "ETB"
+          },
+          "extractors": {
+            "amount": "received\\s+ETB (\\d+(?:,\\d{3})*(?:\\.\\d{1,2})?)",
+            "balance": "balance is ETB (\\d+(?:,\\d{3})*(?:\\.\\d{1,2})?)"
+          },
+          "reference": {
+            "extractor": null,
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        },
+        {
+          "id": "telebirr_fallback_003",
+          "enabled": true,
+          "priority": 3,
+          "type": "DEBIT",
+          "matchers": {
+            "debit": "transferred"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "ETB"
+          },
+          "extractors": {
+            "amount": "transferred ETB (\\d+(?:,\\d{3})*(?:\\.\\d{1,2})?)",
+            "balance": "balance is ETB (\\d+(?:,\\d{3})*(?:\\.\\d{1,2})?)",
+            "link": "(https://transactioninfo\\.ethiotelecom\\.et/receipt/[A-Z0-9]+)"
+          },
+          "reference": {
+            "extractor": "(https://transactioninfo\\.ethiotelecom\\.et/receipt/[A-Z0-9]+)",
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        },
+        {
+          "id": "telebirr_fallback_004",
+          "enabled": true,
+          "priority": 4,
+          "type": "AUTO",
+          "matchers": {
+            "credit": "received",
+            "debit": "paid|transferred"
+          },
+          "currency": {
+            "code": "ETB-disabled",
+            "matcher": "ETB-disabled"
+          },
+          "extractors": {
+            "amount": "ETB (\\d+\\.\\d{2})",
+            "balance": "Your (?:current E-Money Account[\\\\s\\\\xA0]*balance|current balance) is ETB (\\\\d{1,3}(?:,\\\\d{3})*\\\\.\\\\d{2})",
+            "link": "(https?://\\S+)"
+          },
+          "reference": {
+            "extractor": "(https?://\\S+)",
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        },
+        {
+          "id": "telebirr_fallback_005",
+          "enabled": true,
+          "priority": 5,
+          "type": "DEBIT",
+          "matchers": {
+            "debit": "recharged"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "ETB"
+          },
+          "extractors": {
+            "amount": "recharged ETB (\\d+(?:,\\d{3})*(?:\\.\\d{1,2}))\\s+airtime\\s+for",
+            "balance": "Your\\s+current\\s+balance\\s+is\\s+ETB\\s+(\\d+(?:,\\d{3})*(?:\\.\\d{1,2})?)",
+            "link": "https://www\\.ethiotelecom\\.et/telebirr/"
+          },
+          "reference": {
+            "extractor": "https://www\\.ethiotelecom\\.et/telebirr/",
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          },
+          "classification": {
+            "hints": [
+              {
+                "id": "telebirr_fallback_005_hint_00",
+                "categoryKey": "air_time_0",
+                "matcher": "\\brecharged\\s+ETB\\s+\\d+(?:,\\d{3})*(?:\\.\\d{2})?\\s+airtime\\b"
+              }
+            ]
+          }
+        },
+        {
+          "id": "telebirr_fallback_008",
+          "enabled": true,
+          "priority": 8,
+          "type": "DEBIT",
+          "matchers": {
+            "debit": "በተሳካ ሁኔታ አስተላልፈዋል"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "ETB|ብር"
+          },
+          "extractors": {
+            "amount": "(\\d{1,3}(?:,\\d{3})*(?:\\.\\d{2})?)\\s*ብር",
+            "balance": "ያለዎት ቀሪ ሂሳብ\\s*(\\d{1,3}(?:,\\d{3})*(?:\\.\\d{2})?)\\s*ብር",
+            "account": "ከቴሌ ብር አካውንትዎ\\s*(\\d{10})|\\b(\\d{4}[ -]?\\d{4})\\b|\\b(\\*+\\d{4})\\b",
+            "link": "(https?://[\\w.-]+(?:/[\\w.-]*)*)"
+          },
+          "reference": {
+            "extractor": "(https?://[\\w.-]+(?:/[\\w.-]*)*)",
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        },
+        {
+          "id": "telebirr_fallback_009",
+          "enabled": true,
+          "priority": 9,
+          "type": "DEBIT",
+          "matchers": {
+            "debit": "ከፍለዋል"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "ETB|ብር"
+          },
+          "extractors": {
+            "amount": "ለመግዛት\\s*([\\d,.]+)\\s*ብር",
+            "balance": "ያለዎት\\s*ቀሪ\\s*ሂሳብ\\s*([\\d,.]+)\\s*ብር",
+            "account": "ለ?\\s*(\\d{9}|\\d{3}[ -]?\\d{4}|\\d{4}[ -]?\\d{4})"
+          },
+          "reference": {
+            "extractor": null,
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        },
+        {
+          "id": "telebirr_fallback_010",
+          "enabled": true,
+          "priority": 10,
+          "type": "DEBIT",
+          "matchers": {
+            "debit": "ከፍለዋል"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "ETB|ብር"
+          },
+          "extractors": {
+            "amount": "የነዳጅ ግብይት (\\d{1,3}(?:,\\d{3})*(?:\\.\\d{2})?) ብር",
+            "balance": "ቀሪ ሂሳብ ([\\d,]+\\.\\d{2}) ብር",
+            "link": "https?:\\/\\/[\\w.-]+(?:\\:\\d+)?\\/\\S+"
+          },
+          "reference": {
+            "extractor": "https?:\\/\\/[\\w.-]+(?:\\:\\d+)?\\/\\S+",
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        },
+        {
+          "id": "telebirr_fallback_011",
+          "enabled": true,
+          "priority": 11,
+          "type": "DEBIT",
+          "matchers": {
+            "debit": "ተላልፏል"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "ETB|ብር"
+          },
+          "extractors": {
+            "amount": "([\\d,.]+) ብር",
+            "balance": "ቀሪ ሂሳብ ([\\d,.]+) ብር",
+            "account": "2519\\d{8}|\\b\\d{4}[- ]?\\d{4}\\b|\\b\\*{5}\\d{4}\\b"
+          },
+          "reference": {
+            "extractor": null,
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        },
+        {
+          "id": "telebirr_fallback_012",
+          "enabled": true,
+          "priority": 12,
+          "type": "CREDIT",
+          "matchers": {
+            "credit": "deposited"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "ETB"
+          },
+          "extractors": {
+            "amount": "deposited ETB ([\\d,.]+)",
+            "balance": "current saving balance is ETB ([\\d,.]+)",
+            "account": "your (?:telebirr|sinq) account(?: no)? (\\w+)"
+          },
+          "reference": {
+            "extractor": null,
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        },
+        {
+          "id": "telebirr_fallback_013",
+          "enabled": true,
+          "priority": 13,
+          "type": "DEBIT",
+          "matchers": {
+            "debit": "debited"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "ETB"
+          },
+          "extractors": {
+            "amount": "has been debited with ETB ([\\d,.]+)",
+            "balance": "Your current Account balance is ETB ([\\d,.]+)",
+            "account": "Your telebirr account (\\d{12})",
+            "link": "https?://[\\w.-]+(?:/[^\\s]*)?"
+          },
+          "reference": {
+            "extractor": "https?://[\\w.-]+(?:/[^\\s]*)?",
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        },
+        {
+          "id": "telebirr_fallback_015",
+          "enabled": true,
+          "priority": 15,
+          "type": "DEBIT",
+          "matchers": {
+            "debit": "ላደረጉት ግብይት"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "ETB|ብር"
+          },
+          "extractors": {
+            "amount": "ላደረጉት ግብይት ([\\d,.]+) ብር",
+            "balance": "ቀሪ ሂሳብ ([\\d,.]+) ብር",
+            "account": "C\\w{1,10}\\d{1,10}",
+            "link": "(https?://[\\w.-]+(?:/[\\w.-]*)*)"
+          },
+          "reference": {
+            "extractor": "(https?://[\\w.-]+(?:/[\\w.-]*)*)",
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        },
+        {
+          "id": "telebirr_fallback_016",
+          "enabled": true,
+          "priority": 16,
+          "type": "DEBIT",
+          "matchers": {
+            "debit": "credit"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "ETB"
+          },
+          "extractors": {
+            "amount": "ETB ([\\d,.]+) credit amount",
+            "account": "account no (\\b(?:\\*{5}\\d{4}|\\d{4}[ -]?\\d{4}|\\d{4} \\d{4})\\b)"
+          },
+          "reference": {
+            "extractor": null,
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        },
+        {
+          "id": "telebirr_fallback_017",
+          "enabled": true,
+          "priority": 17,
+          "type": "DEBIT",
+          "matchers": {
+            "debit": "ግዥ"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "ETB|ብር"
+          },
+          "extractors": {
+            "amount": "ግዥ ([\\d,.]+) ብር",
+            "balance": "የቴሌብር ቀሪ ሂሳብ ([\\d,.]+) ብር",
+            "account": "ከ?([A-Za-z0-9]*[ -]?\\d{4}[ -]?\\d{4})"
+          },
+          "reference": {
+            "extractor": null,
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        },
+        {
+          "id": "telebirr_fallback_018",
+          "enabled": true,
+          "priority": 18,
+          "type": "CREDIT",
+          "matchers": {
+            "credit": "donated"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "ETB"
+          },
+          "extractors": {
+            "amount": "donated\\s+ETB\\s+([\\d,.]+)",
+            "balance": "Your\\s+current\\s+balance\\s+is\\s+ETB\\s+([\\d,.]+)",
+            "account": "account no (\\b\\w{10,}\\b)"
+          },
+          "reference": {
+            "extractor": null,
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        },
+        {
+          "id": "telebirr_fallback_019",
+          "enabled": true,
+          "priority": 19,
+          "type": "DEBIT",
+          "matchers": {
+            "debit": "Paid"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "ETB"
+          },
+          "extractors": {
+            "amount": "You have Paid\\s+ETB\\s+([\\d,.]+)",
+            "balance": "Your current telebirr balance is ETB\\s+([\\d,.]+)",
+            "account": "account no (\\b\\w{0,5}\\d{4}\\b)",
+            "link": "https?://[\\w.-]+(?:/[^\\s]*)?"
+          },
+          "reference": {
+            "extractor": "https?://[\\w.-]+(?:/[^\\s]*)?",
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          },
+          "counterparty": {
+            "receiver": [
+              "(?:paid|payment|sent|transfered|transferred|debited|recharged|bought|contributed|gifted|top-up).*?\\sto\\s+(.+?)(?=(?:\\s+on\\s*:?\\s*(?:\\d|[A-Z]{3})|\\s+at\\s+\\d|\\.\\s*(?:Your|Thank|Ref|Reference|Txn|Transaction|New|Current|Available|Avail|Remaining|Please|The)|\\s+(?:Your|Thank|Ref|Reference|Txn|Transaction|New balance|Current balance|Available balance|Avail balance|Remaining balance|Charge|VAT|Date|With Bank Ref|Bank Ref)|,\\s*(?:Txn|Reference|Ref)|\\s+with\\s+(?:transaction|reference|Bank Ref)|\\s+and\\s+(?:credited|debited|transferred|posted)|$))"
+            ]
+          }
+        },
+        {
+          "id": "telebirr_fallback_020",
+          "enabled": true,
+          "priority": 20,
+          "type": "DEBIT",
+          "matchers": {
+            "debit": "repaid"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "ETB"
+          },
+          "extractors": {
+            "amount": "repaid ([\\d,.]+) ETB",
+            "balance": "unpaid credit amount is ([\\d,.]+) ETB",
+            "account": "account no (\\b\\w{0,5}\\d{4}\\b)"
+          },
+          "reference": {
+            "extractor": null,
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        },
+        {
+          "id": "telebirr_fallback_021",
+          "enabled": true,
+          "priority": 21,
+          "type": "DEBIT",
+          "matchers": {
+            "debit": "paid"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "ETB"
+          },
+          "extractors": {
+            "amount": "The paid amount is ETB ([\\d,.]+)",
+            "balance": "your monthly outstanding amount is ETB ([\\d,.]+)",
+            "account": "account no (X+\\d+)"
+          },
+          "reference": {
+            "extractor": null,
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        },
+        {
+          "id": "telebirr_fallback_022",
+          "enabled": true,
+          "priority": 22,
+          "type": "DEBIT",
+          "matchers": {
+            "debit": "ልከዋል"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "ETB|ብር"
+          },
+          "extractors": {
+            "amount": "(\\d{1,3}(?:[.,]\\d{3})*(?:[.,]\\d{2})?)\\s*ብር",
+            "balance": "ያለዎት\\s*ቀሪ\\s*ሂሳብ\\s*(\\d{1,3}(?:[.,]\\d{3})*(?:[.,]\\d{2})?)\\s*ብር",
+            "account": "(?:ወደ|ወደ)(\\s*\\w+\\s*\\(\\d{12}\\))",
+            "link": "(https?://[\\w.-]+(?:/[^\\s]*)?)"
+          },
+          "reference": {
+            "extractor": "(https?://[\\w.-]+(?:/[^\\s]*)?)",
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        },
+        {
+          "id": "telebirr_fallback_023",
+          "enabled": true,
+          "priority": 23,
+          "type": "DEBIT",
+          "matchers": {
+            "debit": "Withdraw"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "ETB"
+          },
+          "extractors": {
+            "amount": "Withdraw ETB ([\\d,.]+)",
+            "balance": "Your current sanduq saving balance is ETB ([\\d,.]+)",
+            "account": "your sanduq saving account"
+          },
+          "reference": {
+            "extractor": null,
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        },
+        {
+          "id": "telebirr_fallback_024",
+          "enabled": true,
+          "priority": 24,
+          "type": "DEBIT",
+          "matchers": {
+            "debit": "ከፍለዋል"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "ETB|ብር"
+          },
+          "extractors": {
+            "amount": "([\\d,.]+) ብር ከፍለዋል",
+            "balance": "ቀሪ ሂሳብ ([\\d,.]+) ብር",
+            "account": "ሂሳብ እንቅስቃሴ ቁጥርዎ (CA\\d+S\\d+BA)",
+            "link": "(https?://[\\w.-]+(?:/[\\w.-]*)*)"
+          },
+          "reference": {
+            "extractor": "(https?://[\\w.-]+(?:/[\\w.-]*)*)",
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        },
+        {
+          "id": "telebirr_fallback_026",
+          "enabled": true,
+          "priority": 26,
+          "type": "DEBIT",
+          "matchers": {
+            "debit": "ክፍያ ፈጽመዋል"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "ETB|ብር"
+          },
+          "extractors": {
+            "amount": "(\\d{1,3}(?:,\\d{3})*(?:\\.\\d{2})?) ብር",
+            "balance": "ቀሪ ሂሳብ ([\\d,]+\\.\\d{2}) ብር",
+            "link": "https?:\\/\\/[\\w.-]+\\/\\S+"
+          },
+          "reference": {
+            "extractor": "https?:\\/\\/[\\w.-]+\\/\\S+",
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        },
+        {
+          "id": "telebirr_fallback_028",
+          "enabled": true,
+          "priority": 28,
+          "type": "CREDIT",
+          "matchers": {
+            "credit": "ተቀብለዋል"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "ETB|ብር"
+          },
+          "extractors": {
+            "amount": "(\\d{1,3}(?:[,.]\\d{3})*(?:[,.]\\d{2})?)\\s*ብር",
+            "balance": "የሂሳብ\\s*እንቅስቃሴ\\s*ቁጥርዎ\\s*\\w+\\s*ነዉ\\s*:\\s*(\\d{1,3}(?:[,.]\\d{3})*(?:[,.]\\d{2})?)\\s*ብር"
+          },
+          "reference": {
+            "extractor": null,
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        },
+        {
+          "id": "telebirr_fallback_029",
+          "enabled": true,
+          "priority": 29,
+          "type": "CREDIT",
+          "matchers": {
+            "credit": "transferred from"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "ETB"
+          },
+          "extractors": {
+            "amount": "ETB ([\\d,.]+) transferred",
+            "balance": "current telebirr account balance is ETB ([\\d,.]+)",
+            "account": "your telebirr Account (\\d{12})"
+          },
+          "reference": {
+            "extractor": null,
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        },
+        {
+          "id": "telebirr_fallback_031",
+          "enabled": true,
+          "priority": 31,
+          "type": "DEBIT",
+          "matchers": {
+            "debit": "ቢል ክፍያ .*? ፈፅመዋል"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "([\\d,]+\\.\\d{2}) ብር"
+          },
+          "extractors": {
+            "amount": "(\\d{1,3}(?:,\\d{3})*(?:\\.\\d{2})?) ብር የቴሌኮም ቢል ክፍያ",
+            "balance": "ቀሪ ሂሳብ ([\\d,]+\\.\\d{2}) ብር",
+            "link": "https?:\\/\\/[\\w.-]+\\/\\S+"
+          },
+          "reference": {
+            "extractor": "https?:\\/\\/[\\w.-]+\\/\\S+",
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        },
+        {
+          "id": "telebirr_fallback_032",
+          "enabled": true,
+          "priority": 32,
+          "type": "DEBIT",
+          "matchers": {
+            "debit": "paid"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "ETB"
+          },
+          "extractors": {
+            "amount": "of ETB ([\\d,.]+)",
+            "balance": "Your Current Balance is ETB ([\\d,.]+)",
+            "account": "account no (\\b(?:\\*{5}|\\d{4}[ -]?\\d{4}|\\d{4} \\d{4})\\b)"
+          },
+          "reference": {
+            "extractor": null,
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        },
+        {
+          "id": "telebirr_fallback_033",
+          "enabled": true,
+          "priority": 33,
+          "type": "CREDIT",
+          "matchers": {
+            "credit": "bonus"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "ETB"
+          },
+          "extractors": {
+            "amount": "You have got (ETB [\\d,.]+) bonus",
+            "account": "account no (X+\\d+)"
+          },
+          "reference": {
+            "extractor": null,
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        },
+        {
+          "id": "telebirr_fallback_034",
+          "enabled": true,
+          "priority": 34,
+          "type": "CREDIT",
+          "matchers": {
+            "credit": "ገቢ"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "ብር|ETB"
+          },
+          "extractors": {
+            "amount": "(\\d{1,3}(?:[.,]\\d{3})*(?:[.,]\\d{2})?)\\s*ብር",
+            "balance": "አሁን ያለዎት ቀሪ ሂሳብ\\s*(\\d{1,3}(?:[.,]\\d{3})*(?:[.,]\\d{2})?)\\s*ብር",
+            "account": "(?:አካውንትዎ|ወደ|ወኪል)\\s*(\\d{9,})"
+          },
+          "reference": {
+            "extractor": null,
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        },
+        {
+          "id": "telebirr_fallback_035",
+          "enabled": true,
+          "priority": 35,
+          "type": "CREDIT",
+          "matchers": {
+            "credit": "ክፍያ"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "ብር|ETB"
+          },
+          "extractors": {
+            "amount": "ክፍያ በቴሌብር ስለከፈሉ ([\\d,.]+) ብር",
+            "balance": "ቀሪ ሒሳብ ([\\d,.]+) ብር",
+            "account": "account no (\\b\\w{0,5}\\d{4}\\b)"
+          },
+          "reference": {
+            "extractor": null,
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        },
+        {
+          "id": "telebirr_fallback_036",
+          "enabled": true,
+          "priority": 36,
+          "type": "DEBIT",
+          "matchers": {
+            "debit": "ሞልተዋል"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "ETB|ብር"
+          },
+          "extractors": {
+            "amount": "የ\\s*([\\d,.]+)\\s*ብር",
+            "balance": "ቀሪ\\s*ሂሳብ\\s*([\\d,.]+)\\s*ብር",
+            "account": "ለ?\\s*(\\d{9,})|\\*{5}(\\d{4})|\\d{4}[ -]?\\d{4}",
+            "link": "https?://[\\w.-]+(?:\\.[\\w.-]+)+[/\\w.-]*"
+          },
+          "reference": {
+            "extractor": "https?://[\\w.-]+(?:\\.[\\w.-]+)+[/\\w.-]*",
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        },
+        {
+          "id": "telebirr_fallback_037",
+          "enabled": true,
+          "priority": 37,
+          "type": "DEBIT",
+          "matchers": {
+            "debit": "paid"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "ETB"
+          },
+          "extractors": {
+            "amount": "paid a credit amount of\\s*ETB\\s*([\\d,.]+)",
+            "balance": "current outstanding credit amount ETB\\s*([\\d,.]+)",
+            "account": "account no (\\b\\w{3,}[- ]?\\d{4}\\b|\\b\\*{5}\\d{4}\\b)"
+          },
+          "reference": {
+            "extractor": null,
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        },
+        {
+          "id": "telebirr_fallback_038",
+          "enabled": true,
+          "priority": 38,
+          "type": "DEBIT",
+          "matchers": {
+            "debit": "ለግሰዋል"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "ETB|ብር"
+          },
+          "extractors": {
+            "amount": "\\s+([\\d.]+)\\s+ብር",
+            "balance": "አሁን ያለዎት ቀሪ ሂሳብ\\s+([\\d,]+\\.\\d{2})",
+            "account": "ለ\\s*(\\d{6,})|\\b(\\*+\\d{4})\\b|\\b(\\d{4}[ -]?\\d{4})\\b",
+            "link": "(https?:\\/\\/[^\\s]+)"
+          },
+          "reference": {
+            "extractor": "(https?:\\/\\/[^\\s]+)",
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        },
+        {
+          "id": "telebirr_fallback_039",
+          "enabled": true,
+          "priority": 39,
+          "type": "DEBIT",
+          "matchers": {
+            "debit": "የ\\s*([\\d,.]+)\\s*ብር\\s*አየር\\s*ሰዓት"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "ETB|ብር"
+          },
+          "extractors": {
+            "amount": "የ\\s*([\\d,.]+)\\s*ብር",
+            "balance": "ተሞልቶሎታል፡፡\\s*የሂሳብ\\s*እንቅስቃሴ\\s*ቁጥርዎ\\s*\\w+\\s*",
+            "account": "ከ?\\s*(\\d{12}|\\*{5}\\d{4})\\s*"
+          },
+          "reference": {
+            "extractor": null,
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        },
+        {
+          "id": "telebirr_fallback_040",
+          "enabled": true,
+          "priority": 40,
+          "type": "DEBIT",
+          "matchers": {
+            "debit": "paid"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "([Bb]ir[rz]|ETB)"
+          },
+          "extractors": {
+            "amount": "paid ([\\d,.]+) ብር",
+            "balance": "Your current telebirr balance is ([\\d,.]+) ብር",
+            "account": "account no (\\b(?:\\*{5}|\\d{4}[-\\s]?\\d{4}|\\d{4} \\d{4})\\b)",
+            "link": "(https?://[\\w.-]+(?:/[\\w.-]*)*)"
+          },
+          "reference": {
+            "extractor": "(https?://[\\w.-]+(?:/[\\w.-]*)*)",
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          },
+          "counterparty": {
+            "receiver": [
+              "(?:paid|payment|sent|transfered|transferred|debited|recharged|bought|contributed|gifted|top-up).*?\\sto\\s+(.+?)(?=(?:\\s+on\\s*:?\\s*(?:\\d|[A-Z]{3})|\\s+at\\s+\\d|\\.\\s*(?:Your|Thank|Ref|Reference|Txn|Transaction|New|Current|Available|Avail|Remaining|Please|The)|\\s+(?:Your|Thank|Ref|Reference|Txn|Transaction|New balance|Current balance|Available balance|Avail balance|Remaining balance|Charge|VAT|Date|With Bank Ref|Bank Ref)|,\\s*(?:Txn|Reference|Ref)|\\s+with\\s+(?:transaction|reference|Bank Ref)|\\s+and\\s+(?:credited|debited|transferred|posted)|$))"
+            ]
+          }
+        },
+        {
+          "id": "telebirr_fallback_041",
+          "enabled": true,
+          "priority": 41,
+          "type": "CREDIT",
+          "matchers": {
+            "credit": "ተቀብለዋል"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "ETB|ብር"
+          },
+          "extractors": {
+            "amount": "(\\d{1,3}(?:[,.]\\d{3})*(?:[,.]\\d{2})?)\\s*ብር",
+            "balance": "አሁን ያለዎት ቀሪ ሂሳብ\\s*(\\d{1,3}(?:[,.]\\d{3})*(?:[,.]\\d{2})?)\\s*ብር",
+            "account": "(?:ከ|account no )\\s*(\\(?\\d{3,}\\)?[-\\s]?\\d{4,}|\\*{5}\\d{4})"
+          },
+          "reference": {
+            "extractor": null,
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        }
+      ],
+      "counterparty": {
+        "creditor": [
+          "from\\s+(.+?)\\s+on\\s+\\d",
+          "from\\s+(.+?)(?:\\.\\s*Your|\\s+Your transaction|\\s+Your current|\\s+with transaction)",
+          "transferred from\\s+(.+?)\\s+to your telebirr"
+        ],
+        "receiver": [
+          "to\\s+(.+?)\\s+on\\s+\\d",
+          "to\\s+(.+?)(?:\\s+with transaction|\\.\\s*Your|\\s+Your transaction|\\s+Your current)",
+          "at\\s+(.+?)\\s+on\\s+\\d",
+          "for\\s+(.+?)\\s+on\\s+\\d"
+        ]
+      }
+    },
+    {
+      "bankId": 5,
+      "bankKey": "zemen",
+      "displayName": "Zemen Bank",
+      "senderIds": [
+        "Zemen Bank "
+      ],
+      "rules": [
+        {
+          "id": "zemen_fallback_000",
+          "enabled": true,
+          "priority": 0,
+          "type": "AUTO",
+          "matchers": {
+            "credit": "deposit",
+            "debit": "withdrawn|debited"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "Birr"
+          },
+          "extractors": {
+            "amount": "Birr (\\d+(?:,\\d{3})*(?:\\.\\d{1,2})?)",
+            "balance": "Available Bal\\. is Birr (\\d+(?:,\\d{3})*(?:\\.\\d{1,2})?)",
+            "account": "A/c No\\.\\s+([0-9x]{10,})"
+          },
+          "reference": {
+            "extractor": null,
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        },
+        {
+          "id": "zemen_fallback_001",
+          "enabled": true,
+          "priority": 1,
+          "type": "CREDIT",
+          "matchers": {
+            "credit": "Inward RTGS transfer"
+          },
+          "currency": {
+            "code": "ETB-disabled",
+            "matcher": "ETB-disabled"
+          },
+          "extractors": {
+            "amount": "Birr (\\d{1,3}(?:,\\d{3})*(?:\\.\\d{1,2})?) Inward RTGS transfer",
+            "balance": "The A/c Available Bal\\. is Birr (\\d{1,3}(?:,\\d{3})*(?:\\.\\d{1,2})?)",
+            "account": "to A/c No\\. (\\d{3})\\d+(\\d{4})"
+          },
+          "reference": {
+            "extractor": null,
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        },
+        {
+          "id": "zemen_fallback_002",
+          "enabled": true,
+          "priority": 2,
+          "type": "CREDIT",
+          "matchers": {
+            "credit": "credited with"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "ETB"
+          },
+          "extractors": {
+            "amount": "credited with ETB (\\d+(?:,\\d+)*(?:\\.\\d+)?)",
+            "balance": "Your Current Balance is ETB\\s+(\\d+(?:,\\d{3})*(?:\\.\\d+)?)",
+            "account": "your account\\s+(\\d{3}\\w*\\d{4})"
+          },
+          "reference": {
+            "extractor": null,
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        },
+        {
+          "id": "zemen_fallback_003",
+          "enabled": true,
+          "priority": 3,
+          "type": "DEBIT",
+          "matchers": {
+            "debit": "Cash Withdrawal"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "Birr"
+          },
+          "extractors": {
+            "amount": "Birr (\\d+(?:,\\d{3})*(?:\\.\\d{1,2})?) Cash Withdrawal",
+            "balance": "The A/c Available Bal\\. is Birr (\\d+(?:,\\d{3})*(?:\\.\\d{1,2})?)",
+            "account": "A\\/c No\\. (\\d{3}x{8}\\d{4})"
+          },
+          "reference": {
+            "extractor": null,
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        },
+        {
+          "id": "zemen_fallback_004",
+          "enabled": true,
+          "priority": 4,
+          "type": "DEBIT",
+          "matchers": {
+            "debit": "Outward RTGS transfer"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "Birr"
+          },
+          "extractors": {
+            "amount": "Birr (\\d+(?:,\\d{3})*(?:\\.\\d{1,2})?) Outward RTGS transfer",
+            "balance": "The A\\/c Available Bal\\. is Birr (\\d+(?:,\\d{3})*(?:\\.\\d{1,2})?)",
+            "account": "A\\/c No\\. (\\d{3}x{8}\\d{4})",
+            "link": "https://share\\.zemenbank\\.com/ft/\\S+/pdf"
+          },
+          "reference": {
+            "extractor": "https://share\\.zemenbank\\.com/ft/\\S+/pdf",
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        },
+        {
+          "id": "zemen_fallback_005",
+          "enabled": true,
+          "priority": 5,
+          "type": "DEBIT",
+          "matchers": {
+            "debit": "debited"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "ETB"
+          },
+          "extractors": {
+            "amount": "has been debited with ETB (\\d+(?:,\\d{3})*(?:\\.\\d{1,2})?)",
+            "balance": "Your Current Balance is ETB (\\d+(?:,\\d{3})*(?:\\.\\d{1,2})?)",
+            "account": "your Account (\\d{3}x+\\d{4})",
+            "link": "https:\\/\\/share\\.zemenbank\\.com\\/rt\\/\\d+ETTB\\d+\\/pdf"
+          },
+          "reference": {
+            "extractor": "https:\\/\\/share\\.zemenbank\\.com\\/rt\\/\\d+ETTB\\d+\\/pdf",
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        },
+        {
+          "id": "zemen_fallback_007",
+          "enabled": true,
+          "priority": 7,
+          "type": "DEBIT",
+          "matchers": {
+            "debit": "debited"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "ETB|USD"
+          },
+          "extractors": {
+            "amount": "debited with ETB ([\\d,]+(?:\\.\\d{2})?)",
+            "balance": "Your Current Balance is ETB ([\\d,]+(?:\\.\\d{2})?)",
+            "account": "account (\\d{3}x+?\\d{4})",
+            "link": "https?:\\/\\/[^\\s]+"
+          },
+          "reference": {
+            "extractor": "https?:\\/\\/[^\\s]+",
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          },
+          "counterparty": {
+            "receiver": [
+              "(?:paid|payment|sent|transfered|transferred|debited|recharged|bought|contributed|gifted|top-up).*?\\sto\\s+(.+?)(?=(?:\\s+on\\s*:?\\s*(?:\\d|[A-Z]{3})|\\s+at\\s+\\d|\\.\\s*(?:Your|Thank|Ref|Reference|Txn|Transaction|New|Current|Available|Avail|Remaining|Please|The)|\\s+(?:Your|Thank|Ref|Reference|Txn|Transaction|New balance|Current balance|Available balance|Avail balance|Remaining balance|Charge|VAT|Date|With Bank Ref|Bank Ref)|,\\s*(?:Txn|Reference|Ref)|\\s+with\\s+(?:transaction|reference|Bank Ref)|\\s+and\\s+(?:credited|debited|transferred|posted)|$))"
+            ]
+          }
+        },
+        {
+          "id": "zemen_fallback_009",
+          "enabled": true,
+          "priority": 9,
+          "type": "CREDIT",
+          "matchers": {
+            "credit": "Cash deposit"
+          },
+          "currency": {
+            "code": "USD",
+            "matcher": "USD"
+          },
+          "extractors": {
+            "amount": "USD\\s*([\\d,.]+)\\s*Cash deposit",
+            "balance": "A/c Available Bal\\.\\s*is\\s*USD\\s*([\\d,.]+)",
+            "account": "A/c No\\.\\s*(\\d{3}x{8}\\d{4})"
+          },
+          "reference": {
+            "extractor": null,
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        },
+        {
+          "id": "zemen_fallback_010",
+          "enabled": true,
+          "priority": 10,
+          "type": "DEBIT",
+          "matchers": {
+            "debit": "Fund transfer has been made from"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "ETB"
+          },
+          "extractors": {
+            "amount": "ETB\\s*([\\d,.]+)\\s*Fund transfer",
+            "balance": "A/c Available Bal\\. is ETB\\s*([\\d,.]+)",
+            "account": "A/c No\\.\\s*(\\d{3}x{8}\\d{4})|\\b(\\d{3}[-\\s]?\\d{4})\\b|\\b(\\d{3}\\s\\d{4})\\b"
+          },
+          "reference": {
+            "extractor": null,
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        },
+        {
+          "id": "zemen_fallback_011",
+          "enabled": true,
+          "priority": 11,
+          "type": "DEBIT",
+          "matchers": {
+            "debit": "Fund transfer has been made from"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "Birr"
+          },
+          "extractors": {
+            "amount": "Birr\\s*([\\d,.]+)\\s*Fund transfer",
+            "balance": "A/c Available Bal\\. is Birr\\s*([\\d,.]+)",
+            "account": "A/c No\\.\\s*(\\d{3}x{8}\\d{4})|A/c No\\.\\s*(\\d{15})"
+          },
+          "reference": {
+            "extractor": null,
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        },
+        {
+          "id": "zemen_fallback_012",
+          "enabled": true,
+          "priority": 12,
+          "type": "DEBIT",
+          "matchers": {
+            "debit": "Fund transfer"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "Birr"
+          },
+          "extractors": {
+            "amount": "Birr\\s*([\\d,.]+)\\s*IB Fund transfer has been made",
+            "balance": "A/c Available Bal\\. is Birr\\s*([\\d,.]+)",
+            "account": "A/c No\\.\\s*(\\d{3}x{8}\\d{4})|A/c of\\s*(\\d{15})"
+          },
+          "reference": {
+            "extractor": null,
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        },
+        {
+          "id": "zemen_fallback_013",
+          "enabled": true,
+          "priority": 13,
+          "type": "DEBIT",
+          "matchers": {
+            "debit": "Cheque Withdrawal"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "Birr"
+          },
+          "extractors": {
+            "amount": "Birr\\s*([\\d,.]+)\\s*Cheque Withdrawal",
+            "balance": "A/c Available Bal\\.\\s*is\\s*Birr\\s*([\\d,.]+)",
+            "account": "A/c No\\.\\s*(\\d{3}x{8}\\d{4})"
+          },
+          "reference": {
+            "extractor": null,
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        },
+        {
+          "id": "zemen_fallback_014",
+          "enabled": true,
+          "priority": 14,
+          "type": "DEBIT",
+          "matchers": {
+            "debit": "debited"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "Birr"
+          },
+          "extractors": {
+            "amount": "debited with Birr ([\\d,.]+)",
+            "balance": "available balance is Birr ([\\d,.]+)",
+            "account": "account \\(?(\\d{3}x{8}\\d{4})\\)?",
+            "link": "https?://[\\w.-]+(?:/[\\w.-]*)*"
+          },
+          "reference": {
+            "extractor": "https?://[\\w.-]+(?:/[\\w.-]*)*",
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          },
+          "counterparty": {
+            "receiver": [
+              "(?:Due to POS TRANSACTION|POS purchase transaction|POS transaction).*?\\bat\\s+(.+?)(?=(?:\\s+on\\s*:?\\s*(?:\\d|[A-Z]{3})|\\s+at\\s+\\d|\\.\\s*(?:Your|Thank|Ref|Reference|Txn|Transaction|New|Current|Available|Avail|Remaining|Please|The)|\\s+(?:Your|Thank|Ref|Reference|Txn|Transaction|New balance|Current balance|Available balance|Avail balance|Remaining balance|Charge|VAT|Date|With Bank Ref|Bank Ref)|,\\s*(?:Txn|Reference|Ref)|\\s+with\\s+(?:transaction|reference|Bank Ref)|\\s+and\\s+(?:credited|debited|transferred|posted)|$))"
+            ]
+          }
+        },
+        {
+          "id": "zemen_fallback_015",
+          "enabled": true,
+          "priority": 15,
+          "type": "CREDIT",
+          "matchers": {
+            "credit": "Birr\\s+[\\d,.]+\\s+(.*?)\\s+has been made"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "Birr"
+          },
+          "extractors": {
+            "amount": "Birr\\s+([\\d,]+(?:\\.\\d{1,2})?)\\s+.*?deposit",
+            "balance": "A/c Available Bal\\.is Birr ([\\d,.]+)",
+            "account": "A/c No\\s+([\\dx]+)"
+          },
+          "reference": {
+            "extractor": null,
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        },
+        {
+          "id": "zemen_fallback_016",
+          "enabled": true,
+          "priority": 16,
+          "type": "DEBIT",
+          "matchers": {
+            "debit": "POS transaction has been made"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "Birr"
+          },
+          "extractors": {
+            "amount": "Birr\\s*([\\d,.]+)\\s*POS transaction",
+            "balance": "A/c Available Bal\\.\\s*is\\s*Birr\\s*([\\d,.]+)",
+            "account": "A/c No\\.\\s*(\\d{3}x{8}\\d{4})",
+            "link": "https?://[\\w.-]+(?:\\.[\\w.-]+)+[/\\w.-]*"
+          },
+          "reference": {
+            "extractor": "https?://[\\w.-]+(?:\\.[\\w.-]+)+[/\\w.-]*",
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        },
+        {
+          "id": "zemen_fallback_017",
+          "enabled": true,
+          "priority": 17,
+          "type": "AUTO",
+          "matchers": {
+            "credit": "Fund transfer has been made to",
+            "debit": "Fund transfer from"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "Birr"
+          },
+          "extractors": {
+            "amount": "Birr\\s*([\\d,.]+)\\s*Fund transfer",
+            "balance": "A/c Available Bal\\. is Birr\\s*([\\d,.]+)",
+            "account": "A/c\\s+(?:No\\.|of)\\s*([0-9Xx]{6,20})"
+          },
+          "reference": {
+            "extractor": null,
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          },
+          "counterparty": {
+            "creditor": [
+              "by Fund Transfer from\\s+(.+?)\\s+to\\s+"
+            ]
+          }
+        },
+        {
+          "id": "zemen_fallback_018",
+          "enabled": true,
+          "priority": 18,
+          "type": "DEBIT",
+          "matchers": {
+            "debit": "Miscellaneous-deduction"
+          },
+          "currency": {
+            "code": "ETB",
+            "matcher": "Birr"
+          },
+          "extractors": {
+            "amount": "Birr ([\\d,.]+) Miscellaneous-deduction",
+            "balance": "A/c Available Bal\\.is Birr ([\\d,.]+)",
+            "account": "A/c No (\\d{3}x{8}\\d{4})",
+            "link": "https?://[\\w.-]+(?:\\.[\\w.-]+)+[/\\w.-]*"
+          },
+          "reference": {
+            "extractor": "https?://[\\w.-]+(?:\\.[\\w.-]+)+[/\\w.-]*",
+            "fallback": "timestamp_message_hash",
+            "rejectStatic": true
+          }
+        }
+      ],
+      "counterparty": {
+        "creditor": [],
+        "receiver": []
+      }
+    }
+  ]
+}
