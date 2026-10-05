@@ -58,6 +58,7 @@ function loanItem(input: {
       updatedAt: NOW,
     },
     transaction: input.transaction ?? null,
+    sourceTransaction: input.transaction ?? null,
     original: input.remaining,
     repaid: 0,
     remaining: input.remaining,

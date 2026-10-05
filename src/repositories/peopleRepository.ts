@@ -7,12 +7,28 @@ import {
   type PersonAccount,
   type PersonAccountKind,
   type PersonTransactionLink,
+  type PersonType,
 } from '../models/person';
 import { buildPeopleIndex, normalizePersonIdentifier, type PeopleIndex } from '../utils/personMatching';
 import { profileRepository } from './profileRepository';
 
 function cleanName(name: string): string {
   return name.trim().replace(/\s+/g, ' ');
+}
+
+export interface PersonInput {
+  name: string;
+  phone?: string | null;
+  note?: string | null;
+  type?: PersonType | null;
+  telegram?: string | null;
+  email?: string | null;
+  address?: string | null;
+}
+
+function cleanTelegram(value: string | null | undefined): string | null {
+  const handle = (value ?? '').trim().replace(/^https?:\/\/t\.me\//i, '').replace(/^@/, '');
+  return handle ? handle : null;
 }
 
 function emptyToNull(value: string | null | undefined): string | null {
@@ -47,15 +63,27 @@ export const peopleRepository = {
     return row ? personFromDb(row) : null;
   },
 
-  async createPerson(input: { name: string; phone?: string | null; note?: string | null }): Promise<number> {
+  async createPerson(input: PersonInput): Promise<number> {
     const name = cleanName(input.name);
     if (!name) throw new Error('Enter a name.');
     const db = await getDb();
     const profileId = await profileRepository.getActiveProfileId();
     const now = new Date().toISOString();
     const result = await db.runAsync(
-      'INSERT INTO people (name, phone, note, profileId, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?)',
-      [name, emptyToNull(input.phone), emptyToNull(input.note), profileId, now, now],
+      `INSERT INTO people (name, phone, note, type, telegram, email, address, profileId, createdAt, updatedAt)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        name,
+        emptyToNull(input.phone),
+        emptyToNull(input.note),
+        input.type ?? 'friend',
+        cleanTelegram(input.telegram),
+        emptyToNull(input.email),
+        emptyToNull(input.address),
+        profileId,
+        now,
+        now,
+      ],
     );
     const id = Number(result.lastInsertRowId);
     const phone = emptyToNull(input.phone);
@@ -63,7 +91,7 @@ export const peopleRepository = {
     return id;
   },
 
-  async updatePerson(id: number, input: { name: string; phone?: string | null; note?: string | null }): Promise<void> {
+  async updatePerson(id: number, input: PersonInput): Promise<void> {
     const name = cleanName(input.name);
     if (!name) throw new Error('Enter a name.');
     const db = await getDb();
@@ -76,23 +104,31 @@ export const peopleRepository = {
         [id, oldPhone],
       );
     }
-    await db.runAsync('UPDATE people SET name = ?, phone = ?, note = ?, updatedAt = ? WHERE id = ?', [
-      name,
-      emptyToNull(input.phone),
-      emptyToNull(input.note),
-      new Date().toISOString(),
-      id,
-    ]);
+    await db.runAsync(
+      'UPDATE people SET name = ?, phone = ?, note = ?, type = ?, telegram = ?, email = ?, address = ?, updatedAt = ? WHERE id = ?',
+      [
+        name,
+        emptyToNull(input.phone),
+        emptyToNull(input.note),
+        input.type ?? previous?.type ?? 'friend',
+        input.telegram === undefined ? previous?.telegram ?? null : cleanTelegram(input.telegram),
+        input.email === undefined ? previous?.email ?? null : emptyToNull(input.email),
+        input.address === undefined ? previous?.address ?? null : emptyToNull(input.address),
+        new Date().toISOString(),
+        id,
+      ],
+    );
     const phone = emptyToNull(input.phone);
     if (phone) await peopleRepository.addAccount({ personId: id, bankId: null, identifier: phone, kind: 'phone' });
   },
 
-  /** Deletes the person with their aliases and manual links. Loans keep their free-text name. */
+  /** Deletes the person with their aliases, manual links and group memberships. Loans keep their free-text name. */
   async deletePerson(id: number): Promise<void> {
     const db = await getDb();
     await db.withTransactionAsync(async () => {
       await db.runAsync('DELETE FROM person_accounts WHERE personId = ?', [id]);
       await db.runAsync('DELETE FROM person_transaction_links WHERE personId = ?', [id]);
+      await db.runAsync('DELETE FROM people_group_members WHERE personId = ?', [id]);
       await db.runAsync('DELETE FROM people WHERE id = ?', [id]);
     });
   },
@@ -175,6 +211,7 @@ export const peopleRepository = {
     await db.withTransactionAsync(async () => {
       await db.runAsync('DELETE FROM person_transaction_links');
       await db.runAsync('DELETE FROM person_accounts');
+      await db.runAsync('DELETE FROM people_group_members');
       await db.runAsync('DELETE FROM people');
     });
   },

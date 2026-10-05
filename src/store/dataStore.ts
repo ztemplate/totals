@@ -3,15 +3,19 @@ import type { Account } from '../models/account';
 import type { Bank } from '../models/bank';
 import type { Category } from '../models/category';
 import type { Profile } from '../models/misc';
+import type { TransactionSplit } from '../models/split';
 import type { Transaction } from '../models/transaction';
 import { accountRepository } from '../repositories/accountRepository';
 import { bankRepository } from '../repositories/bankRepository';
+import { cashLinkRepository, type CashSpendLink } from '../repositories/cashLinkRepository';
 import { categoryRepository } from '../repositories/categoryRepository';
 import { profileRepository } from '../repositories/profileRepository';
 import { reimbursementRepository } from '../repositories/reimbursementRepository';
+import { splitRepository } from '../repositories/splitRepository';
 import { transactionRepository } from '../repositories/transactionRepository';
 import { dataChanged } from '../services/dataChanged';
 import { buildSelfTransferReferences, manualSelfCategoryIds } from '../services/spendingSummary';
+import { groupSplitsByParent } from '../utils/transactionSplits';
 
 interface DataState {
   loaded: boolean;
@@ -29,6 +33,10 @@ interface DataState {
   selfCategoryIds: Set<number>;
   /** Expense reference -> amount reimbursed by linked credits. */
   reimbursedByExpense: Map<string, number>;
+  /** Parent transaction reference -> its split parts. */
+  splitsByParent: Map<string, TransactionSplit[]>;
+  /** Cash spending tied to ATM withdrawals. */
+  cashLinks: CashSpendLink[];
   /** Monotonic counter screens can depend on to reload derived data. */
   version: number;
   refresh(): Promise<void>;
@@ -52,6 +60,8 @@ export const useData = create<DataState>((set, get) => ({
   selfTransferReferences: new Set(),
   selfCategoryIds: new Set(),
   reimbursedByExpense: new Map(),
+  splitsByParent: new Map(),
+  cashLinks: [],
   version: 0,
 
   async refresh() {
@@ -77,6 +87,7 @@ export const useData = create<DataState>((set, get) => ({
             transactions.filter((t) => t.type === 'DEBIT').map((t) => t.reference),
           );
           const banksWithCash = await bankRepository.getBanksWithCash();
+          const [splits, cashLinks] = await Promise.all([splitRepository.getAll(), cashLinkRepository.getAll()]);
           set({
             loaded: true,
             error: null,
@@ -90,6 +101,8 @@ export const useData = create<DataState>((set, get) => ({
             selfTransferReferences: buildSelfTransferReferences({ transactions, banks, accounts }),
             selfCategoryIds: manualSelfCategoryIds(categories),
             reimbursedByExpense,
+            splitsByParent: groupSplitsByParent(splits),
+            cashLinks,
             version: get().version + 1,
           });
         } while (queued);

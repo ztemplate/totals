@@ -4,6 +4,7 @@ import * as TaskManager from 'expo-task-manager';
 import { Platform } from 'react-native';
 import { addDays, sameDay, startOfWeek } from '../utils/periodUtils';
 import { checkAndNotifyBudgetAlerts } from './budgetAlert';
+import { runScheduledDriveBackup } from './driveSync';
 import { handleNotificationResponse, notificationService } from './notifications';
 import { notificationSettings, type TimeOfDay } from './notificationSettings';
 import { registerSmsHeadlessTask, smsService } from './smsService';
@@ -81,6 +82,11 @@ export async function runPeriodicWork(now = new Date()): Promise<void> {
     await checkAndNotifyBudgetAlerts();
   } catch (error) {
     if (__DEV__) console.warn('debug: Budget alert check failed', error);
+  }
+  try {
+    await runScheduledDriveBackup(now);
+  } catch (error) {
+    if (__DEV__) console.warn('debug: Scheduled Drive backup failed', error);
   }
 }
 

@@ -177,8 +177,9 @@ async function validateRepaymentAllocations(
       'SELECT amount FROM transactions WHERE reference = ? LIMIT 1',
       [loanDebtReference],
     );
-    if (!loanTx) throw new Error('Loan or debt transaction does not exist.');
-    const original = originalAmountForEntry(entry, loanTx.amount);
+    // Split loans ("parent#split-N") have no transaction of their own, only a principal amount.
+    if (!loanTx && entry.principalAmount == null) throw new Error('Loan or debt transaction does not exist.');
+    const original = originalAmountForEntry(entry, loanTx?.amount);
     const alreadyApplied = await totalApplied(db, loanDebtReference, repaymentReference);
     if (allocation.appliedAmount - (original - alreadyApplied) > 0.005) {
       throw new Error('Repayment exceeds the remaining balance.');

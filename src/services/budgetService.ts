@@ -6,10 +6,13 @@ import {
   type Budget,
   type BudgetStatus,
 } from '../models/budget';
-import { selectedCategoryIds, type Transaction } from '../models/transaction';
+import type { TransactionSplit } from '../models/split';
+import type { Transaction } from '../models/transaction';
 import { budgetRepository } from '../repositories/budgetRepository';
 import { reimbursementRepository } from '../repositories/reimbursementRepository';
+import { splitRepository } from '../repositories/splitRepository';
 import { transactionRepository } from '../repositories/transactionRepository';
+import { amountInCategories, groupSplitsByParent } from '../utils/transactionSplits';
 import { expenseAmountAfterReimbursement, transactionDebitOutflow } from '../utils/transactionAmounts';
 
 interface BudgetStatusRequest {
@@ -19,14 +22,33 @@ interface BudgetStatusRequest {
   periodEnd: Date;
 }
 
-function sumNetSpending(transactions: Iterable<Transaction>, reimbursedByReference: Map<string, number>): number {
+/**
+ * Net spending, optionally limited to categories. A split transaction only counts the parts in those
+ * categories, and a reimbursement reduces each part in proportion to its share of the transaction.
+ */
+function sumNetSpending(
+  transactions: Iterable<Transaction>,
+  reimbursedByReference: Map<string, number>,
+  categoryIds: ReadonlySet<number> | null,
+  splitsByParent: Map<string, TransactionSplit[]>,
+): number {
   let sum = 0;
   for (const tx of transactions) {
     const gross = transactionDebitOutflow(tx);
     const reimbursed = reimbursedByReference.get(tx.reference.trim()) ?? 0;
-    sum += expenseAmountAfterReimbursement(gross, reimbursed);
+    const net = expenseAmountAfterReimbursement(gross, reimbursed);
+    if (categoryIds === null) {
+      sum += net;
+      continue;
+    }
+    const inCategories = amountInCategories(tx, splitsByParent.get(tx.reference), categoryIds, gross);
+    sum += gross > 0 ? (inCategories * net) / gross : 0;
   }
   return sum;
+}
+
+async function loadSplitsByParent(): Promise<Map<string, TransactionSplit[]>> {
+  return groupSplitsByParent(await splitRepository.getAll());
 }
 
 function buildStatus(request: BudgetStatusRequest, spent: number): BudgetStatus {
@@ -59,17 +81,15 @@ async function getStatusesForBudgets(budgets: Budget[]): Promise<BudgetStatus[]>
   });
 
   const statuses = new Array<BudgetStatus>(budgets.length);
+  const splitsByParent = await loadSplitsByParent();
   for (const requests of requestsByPeriod.values()) {
     const { periodStart, periodEnd } = requests[0];
     const transactions = await transactionRepository.getTransactionsByDateRange(periodStart, periodEnd, { type: 'DEBIT' });
     const reimbursed = await reimbursementRepository.getAppliedTotalsForExpenses(transactions.map((t) => t.reference));
     for (const request of requests) {
       const categoryIds = new Set(budgetSelectedCategoryIds(request.budget));
-      const applicable =
-        categoryIds.size === 0
-          ? transactions
-          : transactions.filter((tx) => selectedCategoryIds(tx).some((id) => categoryIds.has(id)));
-      statuses[request.index] = buildStatus(request, sumNetSpending(applicable, reimbursed));
+      const spent = sumNetSpending(transactions, reimbursed, categoryIds.size === 0 ? null : categoryIds, splitsByParent);
+      statuses[request.index] = buildStatus(request, spent);
     }
   }
   return statuses;
@@ -93,10 +113,8 @@ export const budgetService = {
     });
     const ids = new Set<number>((params.categoryIds ?? []).filter((id) => id > 0));
     if (params.categoryId != null && params.categoryId > 0) ids.add(params.categoryId);
-    const filtered =
-      ids.size === 0 ? transactions : transactions.filter((tx) => selectedCategoryIds(tx).some((id) => ids.has(id)));
-    const reimbursed = await reimbursementRepository.getAppliedTotalsForExpenses(filtered.map((t) => t.reference));
-    return sumNetSpending(filtered, reimbursed);
+    const reimbursed = await reimbursementRepository.getAppliedTotalsForExpenses(transactions.map((t) => t.reference));
+    return sumNetSpending(transactions, reimbursed, ids.size === 0 ? null : ids, await loadSplitsByParent());
   },
 
   async getBudgetStatus(budget: Budget): Promise<BudgetStatus> {

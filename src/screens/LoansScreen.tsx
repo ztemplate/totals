@@ -233,7 +233,7 @@ export function LoansScreen({ route, navigation }: StackScreenProps<'Loans'>) {
 }
 
 function itemDate(item: LoanDebtItem): Date | null {
-  if (item.transaction) return txDate(item.transaction);
+  if (item.sourceTransaction) return txDate(item.sourceTransaction);
   const d = new Date(item.entry.createdAt);
   return Number.isNaN(d.getTime()) ? null : d;
 }
@@ -274,6 +274,7 @@ function LoanItemRow(props: {
         subtitle={[
           date ? formatDate(date, props.calendar) : null,
           item.entry.source === 'repayment_surplus' ? 'From repayment surplus' : null,
+          !item.transaction && item.sourceTransaction ? `Part of ${counterpartyOf(item.sourceTransaction)}` : null,
           returnDate ? `${overdue ? 'Overdue since' : 'Due'} ${formatDate(returnDate, props.calendar)}` : null,
         ]
           .filter(Boolean)
@@ -313,13 +314,13 @@ function LoanItemRow(props: {
             </Text>
           )}
           <View style={[ui.rowCenter, { justifyContent: 'flex-end' }]}>
-            {item.transaction ? (
+            {item.sourceTransaction ? (
               <Button
-                title="Transaction"
+                title={item.transaction ? 'Transaction' : 'Split payment'}
                 variant="ghost"
                 compact
                 icon="receipt-long"
-                onPress={() => props.onOpen(item.entry.transactionReference)}
+                onPress={() => props.onOpen(item.sourceTransaction!.reference)}
               />
             ) : null}
             {item.entry.status === 'active' ? (

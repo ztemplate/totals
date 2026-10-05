@@ -1,23 +1,26 @@
 import React, { useState } from 'react';
 import { Alert, Text, View } from 'react-native';
 import { showError } from '../components/dialogs';
-import { Button, Card, Chip, Screen, SectionTitle, SegmentedControl, TextField, styles as ui } from '../components/ui';
+import { PickWithdrawalSheet } from '../components/splits';
+import { Button, Card, Chip, ListRow, Screen, SectionTitle, SegmentedControl, TextField, styles as ui } from '../components/ui';
 import { isManagedCategory } from '../models/category';
 import { makeTransaction } from '../models/transaction';
 import type { StackScreenProps } from '../navigation/types';
+import { cashLinkRepository } from '../repositories/cashLinkRepository';
 import { transactionRepository } from '../repositories/transactionRepository';
 import { notifyDataChanged, useData } from '../store/dataStore';
 import { useTheme } from '../store/settingsStore';
 import { spacing } from '../theme/colors';
+import { summarizePocket } from '../utils/cashPocket';
 import { CASH_ACCOUNT_NUMBER, CASH_BANK_ID, newManualCashReference } from '../utils/cashConstants';
 import { addDays, parseDateInput, toDateInput } from '../utils/dates';
-import { parseAmountInput } from '../utils/format';
+import { formatMoney, parseAmountInput } from '../utils/format';
 
 type CashType = 'DEBIT' | 'CREDIT';
 
 export function AddCashScreen({ route, navigation }: StackScreenProps<'AddCash'>) {
   const colors = useTheme();
-  const categories = useData((s) => s.categories);
+  const { categories, transactions, cashLinks } = useData();
   const [type, setType] = useState<CashType>(route.params?.type ?? 'DEBIT');
   const [amount, setAmount] = useState('');
   const [counterparty, setCounterparty] = useState('');
@@ -25,6 +28,10 @@ export function AddCashScreen({ route, navigation }: StackScreenProps<'AddCash'>
   const [date, setDate] = useState(toDateInput(new Date()));
   const [categoryIds, setCategoryIds] = useState<number[]>([]);
   const [saving, setSaving] = useState(false);
+  const [withdrawalRef, setWithdrawalRef] = useState<string | null>(route.params?.withdrawalReference ?? null);
+  const [pickingWithdrawal, setPickingWithdrawal] = useState(false);
+  const withdrawal = withdrawalRef ? transactions.find((t) => t.reference === withdrawalRef) ?? null : null;
+  const pocket = withdrawal ? summarizePocket(withdrawal, cashLinks, transactions) : null;
 
   const flow = type === 'CREDIT' ? 'income' : 'expense';
   // Loan/debt, repayment and reimbursement links need the transaction detail flow, so they are picked after saving.
@@ -79,6 +86,7 @@ export function AddCashScreen({ route, navigation }: StackScreenProps<'AddCash'>
         }),
         { skipAutoCategorization: categoryIds.length > 0 },
       );
+      if (type === 'DEBIT' && withdrawalRef) await cashLinkRepository.link(reference, withdrawalRef);
       notifyDataChanged();
       navigation.replace('TransactionDetail', { reference });
     } catch (error) {
@@ -129,6 +137,23 @@ export function AddCashScreen({ route, navigation }: StackScreenProps<'AddCash'>
         <TextField label="Note" value={note} onChangeText={setNote} placeholder="Optional" multiline />
       </Card>
 
+      {type === 'DEBIT' ? (
+        <>
+          <SectionTitle title="Paid from" />
+          <Card style={{ paddingVertical: spacing.xs }}>
+            <ListRow
+              icon="local-atm"
+              iconColor={colors.info}
+              title={pocket ? `ATM withdrawal · ${formatMoney(pocket.withdrawn)}` : 'Not linked to a withdrawal'}
+              subtitle={pocket ? `${formatMoney(pocket.remaining)} of it left` : 'Tap to pick the ATM cash this came from'}
+              onPress={() => setPickingWithdrawal(true)}
+              onLongPress={() => setWithdrawalRef(null)}
+              chevron
+            />
+          </Card>
+        </>
+      ) : null}
+
       <SectionTitle title="Category" />
       <Card>
         <View style={ui.rowWrap}>
@@ -143,6 +168,13 @@ export function AddCashScreen({ route, navigation }: StackScreenProps<'AddCash'>
       </Card>
 
       <Button title={type === 'DEBIT' ? 'Save expense' : 'Save income'} icon="check" onPress={() => void save()} loading={saving} />
+      <PickWithdrawalSheet
+        visible={pickingWithdrawal}
+        tx={null}
+        currentReference={withdrawalRef}
+        onClose={() => setPickingWithdrawal(false)}
+        onPick={setWithdrawalRef}
+      />
     </Screen>
   );
 }

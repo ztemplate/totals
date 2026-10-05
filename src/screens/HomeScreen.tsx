@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { AmountText, BankAvatar, TransactionRow } from '../components/finance';
+import { AmountText, BankAvatar } from '../components/finance';
+import { ExpandableTransactionRow } from '../components/transactionActions';
 import { Card, EmptyState, IconButton, Icon, SectionTitle, styles as ui } from '../components/ui';
 import { useAppNavigation } from '../navigation/types';
 import { bankById } from '../repositories/bankRepository';
@@ -166,11 +167,11 @@ export function HomeScreen() {
           />
         ) : (
           recent.map((tx) => (
-            <TransactionRow
+            <ExpandableTransactionRow
               key={tx.reference}
               tx={tx}
               showDate
-              onPress={() => navigation.navigate('TransactionDetail', { reference: tx.reference })}
+              onOpen={() => navigation.navigate('TransactionDetail', { reference: tx.reference })}
             />
           ))
         )}

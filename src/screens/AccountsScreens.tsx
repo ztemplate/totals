@@ -3,8 +3,11 @@ import { CameraView, useCameraPermissions } from 'expo-camera';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Linking, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import QRCode from 'react-native-qrcode-svg';
+import { hasSmsPermission, requestSmsPermission } from '../../modules/sms-reader';
+import { DateRangeSheet } from '../components/dateRange';
 import { confirm, showError } from '../components/dialogs';
-import { AmountText, BankAvatar, TransactionRow, sortByTimeDesc } from '../components/finance';
+import { AmountText, BankAvatar, sortByTimeDesc } from '../components/finance';
+import { ExpandableTransactionRow } from '../components/transactionActions';
 import {
   Button,
   Card,
@@ -14,6 +17,7 @@ import {
   IconButton,
   ListRow,
   Pill,
+  ProgressBar,
   Screen,
   SectionTitle,
   SegmentedControl,
@@ -25,19 +29,23 @@ import {
 import type { Account } from '../models/account';
 import type { Bank } from '../models/bank';
 import type { UserAccount } from '../models/misc';
-import type { StackScreenProps } from '../navigation/types';
+import type { AppNavigation, StackScreenProps } from '../navigation/types';
 import { accountRepository } from '../repositories/accountRepository';
 import { bankById } from '../repositories/bankRepository';
+import { sourceSmsRepository } from '../repositories/sourceSmsRepository';
 import { userAccountRepository } from '../repositories/userAccountRepository';
-import { smsService } from '../services/smsService';
+import { claimMessagesForAccount, labelDetectedAccount, reconcileAccounts } from '../services/accountLabeling';
+import { smsService, type TodaySmsSyncResult } from '../services/smsService';
 import { notifyDataChanged, useData } from '../store/dataStore';
-import { useTheme } from '../store/settingsStore';
+import { useSettings, useTheme } from '../store/settingsStore';
 import { radius, spacing } from '../theme/colors';
 import { decodeAccountSharePayload, encodeAccountSharePayload, type AccountShareEntry, type AccountSharePayload } from '../utils/accountSharePayload';
-import { transactionBelongsToAccount } from '../utils/accountIdentity';
+import { suggestedAccountHolderNameFromSms, transactionBelongsToAccount } from '../utils/accountIdentity';
 import { accountDisplayBalance } from '../utils/balances';
 import { CASH_BANK_ID } from '../utils/cashConstants';
-import { maskAccountNumber, parseAmountInput } from '../utils/format';
+import type { DateRange } from '../utils/dateRange';
+import { formatDateTime, formatNumber, maskAccountNumber, parseAmountInput, relativeDayLabel } from '../utils/format';
+import { detectUnlabeledAccounts, isMaskedAccountNumber, type UnlabeledAccount } from '../utils/unlabeledAccounts';
 
 const QR_COLOR = '#1976D2';
 
@@ -124,14 +132,16 @@ export function AccountsScreen({ navigation }: StackScreenProps<'Accounts'>) {
         value={tab}
         onChange={setTab}
       />
-      {tab === 'tracked' ? <TrackedAccounts navigation={navigation} /> : <AccountHub navigation={navigation} />}
+      {tab === 'tracked' ? <TrackedAccounts navigation={navigation as unknown as AppNavigation} /> : <AccountHub navigation={navigation} />}
     </Screen>
   );
 }
 
-function TrackedAccounts({ navigation }: { navigation: StackScreenProps<'Accounts'>['navigation'] }) {
+/** Registered accounts grouped by bank, followed by the accounts found in bank SMS that are not labeled yet. */
+export function TrackedAccounts({ navigation }: { navigation: AppNavigation }) {
   const colors = useTheme();
-  const { accounts, banksWithCash, transactions } = useData();
+  const { accounts, banks, banksWithCash, transactions } = useData();
+  const unlabeled = useMemo(() => detectUnlabeledAccounts(transactions, accounts, banks), [transactions, accounts, banks]);
 
   const groups = useMemo(() => {
     const byBank = new Map<number, Account[]>();
@@ -154,14 +164,16 @@ function TrackedAccounts({ navigation }: { navigation: StackScreenProps<'Account
 
   return (
     <>
-      {bankAccountCount === 0 ? (
+      {bankAccountCount === 0 && unlabeled.length === 0 ? (
         <EmptyState
           icon="account-balance"
           title="No bank accounts yet"
-          message="Add an account to start tracking transactions from your bank SMS."
+          message="Import your bank SMS to find your accounts automatically, or add one by hand."
           action={{ label: 'Add account', onPress: () => navigation.navigate('AddAccount') }}
         />
       ) : null}
+      <UnlabeledAccounts items={unlabeled} navigation={navigation} />
+      <SmsScanCard hasAccounts={bankAccountCount > 0} />
       {groups.map((group) => (
         <View key={group.bankId} style={{ gap: spacing.sm }}>
           <SectionTitle title={group.bank?.name ?? `Bank ${group.bankId}`} />
@@ -202,6 +214,295 @@ function TrackedAccounts({ navigation }: { navigation: StackScreenProps<'Account
         />
       </View>
     </>
+  );
+}
+
+function unlabeledTitle(item: UnlabeledAccount, bank: Bank | null): string {
+  if (item.accountNumber) return isMaskedAccountNumber(item.accountNumber) ? item.accountNumber : maskAccountNumber(item.accountNumber);
+  if (bank?.simBased) return item.subscriptionId != null ? `SIM ${item.subscriptionId}` : 'Your number';
+  return 'Number not in SMS';
+}
+
+/** Accounts seen in imported bank messages that are not registered yet, with a one-tap label flow. */
+function UnlabeledAccounts({ items, navigation }: { items: UnlabeledAccount[]; navigation: AppNavigation }) {
+  const colors = useTheme();
+  const calendar = useSettings((s) => s.calendar);
+  const banks = useData((s) => s.banks);
+  const [labeling, setLabeling] = useState<UnlabeledAccount | null>(null);
+
+  if (items.length === 0) return null;
+
+  return (
+    <View style={{ gap: spacing.sm }}>
+      <SectionTitle title={`Unlabeled accounts (${items.length})`} />
+      <Card style={{ gap: spacing.sm }}>
+        <Text style={{ color: colors.textSecondary, fontSize: 13 }}>
+          Found in your bank SMS. Label the ones that are yours; their messages are already imported.
+        </Text>
+        {items.map((item) => {
+          const bank = bankById(banks, item.bankId);
+          return (
+            <ListRow
+              key={item.key}
+              left={<BankAvatar bank={bank} size={40} />}
+              title={`${bank?.shortName || bank?.name || 'Bank'} · ${unlabeledTitle(item, bank)}`}
+              subtitle={`${item.count} message${item.count === 1 ? '' : 's'}${
+                item.lastDate ? ` · last ${relativeDayLabel(item.lastDate, calendar)}` : ''
+              }`}
+              onPress={() => setLabeling(item)}
+              onLongPress={() => navigation.navigate('Tabs', { screen: 'Money', params: { bankId: item.bankId } })}
+              right={<Button title="Label" compact variant="secondary" onPress={() => setLabeling(item)} />}
+            />
+          );
+        })}
+      </Card>
+      <LabelAccountSheet item={labeling} onClose={() => setLabeling(null)} />
+    </View>
+  );
+}
+
+type ScanKind = 'new' | 'range' | 'full' | 'recheck';
+
+function scanSummary(result: TodaySmsSyncResult): string {
+  if (result.processed === 0) return 'No bank messages in that period.';
+  const parts = [
+    result.added === 0 ? 'No new transactions.' : `${result.added} new transaction${result.added === 1 ? '' : 's'} added.`,
+    `${result.processed} message${result.processed === 1 ? '' : 's'} read`,
+  ];
+  if (result.duplicates > 0) parts.push(`${result.duplicates} already imported`);
+  if (result.noPattern > 0) parts.push(`${result.noPattern} not understood`);
+  return `${parts[0]} ${parts.slice(1).join(', ')}.`;
+}
+
+/**
+ * Reads bank SMS into the app: only what arrived since the last scan, a chosen date range, or the
+ * whole inbox. Every scan also re-checks which account owns each message and its balance.
+ */
+function SmsScanCard({ hasAccounts }: { hasAccounts: boolean }) {
+  const colors = useTheme();
+  const calendar = useSettings((s) => s.calendar);
+  const version = useData((s) => s.version);
+  const [lastScan, setLastScan] = useState<Date | null | undefined>(undefined);
+  const [imported, setImported] = useState(false);
+  const [running, setRunning] = useState<ScanKind | null>(null);
+  const [progress, setProgress] = useState<{ processed: number; total: number } | null>(null);
+  const [rangeSheet, setRangeSheet] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    Promise.all([smsService.getLastScanAt(), smsService.hasImportedAllBankHistory()])
+      .then(([at, done]) => {
+        if (!alive) return;
+        setLastScan(at);
+        setImported(done);
+      })
+      .catch(() => alive && setLastScan(null));
+    return () => {
+      alive = false;
+    };
+  }, [version, running]);
+
+  if (Platform.OS !== 'android') return null;
+
+  const run = async (kind: ScanKind, scan: () => Promise<TodaySmsSyncResult | string>) => {
+    if (running) return;
+    if (kind !== 'recheck' && !hasSmsPermission() && !(await requestSmsPermission())) {
+      Alert.alert('SMS permission needed', 'Allow SMS access so bank messages can be read.');
+      return;
+    }
+    setRunning(kind);
+    setProgress(null);
+    try {
+      const result = await scan();
+      if (typeof result === 'string') Alert.alert('Accounts checked', result);
+      else if (result.permissionDenied) Alert.alert('SMS permission needed', 'Allow SMS access so bank messages can be read.');
+      else Alert.alert('Scan complete', scanSummary(result));
+    } catch (error) {
+      showError('Could not scan SMS', error);
+    } finally {
+      setRunning(null);
+      setProgress(null);
+      notifyDataChanged();
+    }
+  };
+
+  const onProgress = (processed: number, total: number) => setProgress({ processed, total });
+
+  const scanNew = () => run('new', () => smsService.syncBankSmsSinceLastScan({ onProgress }));
+  const scanRange = (range: DateRange | null) => {
+    if (!range) return;
+    void run('range', () => smsService.syncBankSmsBetween({ start: range.start, end: range.end, onProgress }));
+  };
+  const scanAll = async () => {
+    if (
+      imported &&
+      !(await confirm('Re-scan every message?', 'Reads your whole inbox again. Already imported messages are skipped.', 'Re-scan'))
+    ) {
+      return;
+    }
+    void run('full', () => smsService.syncAllBankHistory({ onProgress }));
+  };
+  const recheck = () =>
+    run('recheck', async () => {
+      const { moved, balances } = await reconcileAccounts();
+      if (moved === 0 && balances === 0) return 'Every message is under the right account and balances are up to date.';
+      return [
+        moved > 0 ? `${moved} message${moved === 1 ? '' : 's'} moved to the right account.` : null,
+        balances > 0 ? `${balances} balance${balances === 1 ? '' : 's'} updated from the latest message.` : null,
+      ]
+        .filter(Boolean)
+        .join(' ');
+    });
+
+  const neverScanned = lastScan === null && !imported;
+
+  return (
+    <View style={{ gap: spacing.sm }}>
+      <SectionTitle title={neverScanned && !hasAccounts ? 'Find your accounts' : 'Bank SMS'} />
+      <Card style={{ gap: spacing.sm }}>
+        <Text style={{ color: colors.textSecondary, fontSize: 13 }}>
+          {neverScanned
+            ? 'Read every supported bank SMS once and list the accounts they mention, no need to add accounts first.'
+            : lastScan
+              ? `Last scanned ${formatDateTime(lastScan, calendar)}.`
+              : 'Scan for messages that arrived since your last import.'}
+        </Text>
+        {running ? (
+          <View style={{ gap: spacing.xs }}>
+            <Text style={{ color: colors.textSecondary, fontSize: 12 }}>
+              {running === 'recheck'
+                ? 'Checking accounts…'
+                : `Reading bank SMS… ${progress && progress.total > 0 ? `${progress.processed} of ${progress.total}` : ''}`}
+            </Text>
+            <ProgressBar progress={progress && progress.total > 0 ? progress.processed / progress.total : 0} />
+          </View>
+        ) : neverScanned ? (
+          <Button title="Import all bank SMS" icon="sms" onPress={() => void scanAll()} />
+        ) : (
+          <>
+            <Button
+              title="Scan new messages"
+              icon="sync"
+              onPress={() => void scanNew()}
+            />
+            <View style={[ui.rowCenter, { gap: spacing.sm }]}>
+              <Button
+                title="Date range"
+                icon="date-range"
+                variant="secondary"
+                compact
+                style={{ flex: 1 }}
+                onPress={() => setRangeSheet(true)}
+              />
+              <Button title="Full re-scan" icon="sms" variant="secondary" compact style={{ flex: 1 }} onPress={() => void scanAll()} />
+            </View>
+            {hasAccounts ? (
+              <Button
+                title="Recheck balances & owners"
+                icon="fact-check"
+                variant="ghost"
+                compact
+                onPress={() => void recheck()}
+              />
+            ) : null}
+          </>
+        )}
+      </Card>
+      <DateRangeSheet visible={rangeSheet} onClose={() => setRangeSheet(false)} value={null} onChange={scanRange} />
+    </View>
+  );
+}
+
+function LabelAccountSheet({ item, onClose }: { item: UnlabeledAccount | null; onClose: () => void }) {
+  const colors = useTheme();
+  const banks = useData((s) => s.banks);
+  const bank = item ? bankById(banks, item.bankId) : null;
+  const [number, setNumber] = useState('');
+  const [holder, setHolder] = useState('');
+  const [balance, setBalance] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!item) return;
+    setNumber(item.accountNumber && !isMaskedAccountNumber(item.accountNumber) ? item.accountNumber : '');
+    setBalance(item.lastBalance != null ? String(item.lastBalance) : '');
+    setHolder('');
+    let cancelled = false;
+    // The greeting in the messages ("Dear Abebe") is the best guess for the holder name.
+    sourceSmsRepository
+      .getForTransactionReferences(item.references.slice(-30))
+      .then((messages) => {
+        if (cancelled) return;
+        const name = messages.map((m) => suggestedAccountHolderNameFromSms(m.body)).find(Boolean);
+        if (name) setHolder((current) => current || name);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [item]);
+
+  const parsedBalance = parseAmountInput(balance);
+  const masked = !!item?.accountNumber && isMaskedAccountNumber(item.accountNumber);
+
+  const save = async () => {
+    if (!item) return;
+    const accountNumber = number.trim() || item.accountNumber || '';
+    if (!accountNumber) {
+      Alert.alert('Number required', bank?.simBased ? 'Enter your phone number for this SIM.' : 'Enter the account number.');
+      return;
+    }
+    setSaving(true);
+    try {
+      const moved = await labelDetectedAccount({
+        bankId: item.bankId,
+        accountNumber,
+        accountHolderName: holder,
+        balance: parsedBalance ?? 0,
+        subscriptionId: item.subscriptionId,
+        references: item.references,
+      });
+      notifyDataChanged();
+      onClose();
+      Alert.alert('Account added', `${moved} message${moved === 1 ? '' : 's'} now belong to this account.`);
+    } catch (error) {
+      showError('Could not label account', error);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Sheet visible={item !== null} onClose={onClose} title="Label account">
+      {item ? (
+        <View style={{ gap: spacing.md }}>
+          <View style={[ui.rowCenter, { gap: spacing.md }]}>
+            <BankAvatar bank={bank} size={44} />
+            <View style={{ flex: 1 }}>
+              <Text style={{ color: colors.text, fontWeight: '700', fontSize: 16 }}>{bank?.name ?? 'Bank'}</Text>
+              <Text style={{ color: colors.textSecondary, fontSize: 12 }}>
+                {item.count} messages · in {formatNumber(item.credit)} · out {formatNumber(item.debit)}
+              </Text>
+            </View>
+          </View>
+          <TextField
+            label={bank?.simBased ? 'Phone number' : 'Account number'}
+            value={number}
+            onChangeText={setNumber}
+            keyboardType="number-pad"
+            placeholder={item.accountNumber ?? (bank?.simBased ? '09…' : 'Account number')}
+          />
+          {masked ? (
+            <Text style={{ color: colors.textMuted, fontSize: 12 }}>
+              The bank hides part of the number. Enter the full number, or leave it empty to keep {item.accountNumber}.
+            </Text>
+          ) : null}
+          <TextField label="Account holder name" value={holder} onChangeText={setHolder} autoCapitalize="words" placeholder="As it appears in the SMS" />
+          <TextField label="Current balance" value={balance} onChangeText={setBalance} keyboardType="decimal-pad" placeholder="0" />
+          <Button title="Add to my accounts" icon="check" loading={saving} onPress={() => void save()} />
+        </View>
+      ) : null}
+    </Sheet>
   );
 }
 
@@ -572,6 +873,11 @@ export function AccountDetailScreen({ route, navigation }: StackScreenProps<'Acc
         accountHolderName: holder.trim(),
         balance: parsedBalance ?? undefined,
       });
+      // Messages are matched on both the holder name and the number; re-check them after either changes.
+      if (!isCash && (newNumber !== account.accountNumber || holder.trim() !== account.accountHolderName.trim())) {
+        // A balance typed in here wins over the one in the newest message.
+        await reconcileAccounts({ balances: parsedBalance == null || parsedBalance === account.balance });
+      }
       setEditing(false);
       notifyDataChanged();
       if (!isCash && newNumber !== account.accountNumber) {
@@ -762,11 +1068,11 @@ export function AccountDetailScreen({ route, navigation }: StackScreenProps<'Acc
       ) : (
         <Card style={{ paddingVertical: spacing.xs }}>
           {accountTransactions.slice(0, limit).map((tx) => (
-            <TransactionRow
+            <ExpandableTransactionRow
               key={tx.reference}
               tx={tx}
               showDate
-              onPress={() => navigation.push('TransactionDetail', { reference: tx.reference })}
+              onOpen={() => navigation.push('TransactionDetail', { reference: tx.reference })}
             />
           ))}
           {accountTransactions.length > limit ? (
@@ -798,7 +1104,19 @@ export function AddAccountScreen({ route, navigation }: StackScreenProps<'AddAcc
   const [holder, setHolder] = useState(params?.accountHolderName ?? '');
   const [balance, setBalance] = useState('');
   const [syncSms, setSyncSms] = useState(Platform.OS === 'android');
+  const [historyImported, setHistoryImported] = useState(false);
   const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    // Once every bank SMS is imported, a new account only needs to claim its messages.
+    smsService
+      .hasImportedAllBankHistory()
+      .then((imported) => {
+        setHistoryImported(imported);
+        if (imported) setSyncSms(false);
+      })
+      .catch(() => undefined);
+  }, []);
 
   const selectableBanks = banks.filter((b) => b.id !== CASH_BANK_ID);
   const bank = bankById(banks, bankId);
@@ -831,6 +1149,7 @@ export function AddAccountScreen({ route, navigation }: StackScreenProps<'AddAcc
         isDormant: false,
         isDefault: false,
       });
+      await claimMessagesForAccount({ accountNumber, bank: bankId });
       notifyDataChanged();
 
       if (syncSms && Platform.OS === 'android') {
@@ -910,7 +1229,11 @@ export function AddAccountScreen({ route, navigation }: StackScreenProps<'AddAcc
           <ToggleRow
             icon="sms"
             title="Import past SMS"
-            subtitle="Read previous messages from this bank to build your history"
+            subtitle={
+              historyImported
+                ? 'Your bank SMS are already imported; their messages move to this account. Turn on to read the inbox again.'
+                : 'Read previous messages from this bank to build your history'
+            }
             value={syncSms}
             onValueChange={setSyncSms}
           />

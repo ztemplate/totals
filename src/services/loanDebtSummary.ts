@@ -1,4 +1,5 @@
 import type { LoanDebtEntry, LoanDebtRepayment, LoanDebtStatus } from '../models/loanDebt';
+import { parentReferenceOfSplitLoan } from '../models/split';
 import type { Transaction } from '../models/transaction';
 import { loanDebtRepository } from '../repositories/loanDebtRepository';
 
@@ -8,6 +9,11 @@ export interface LoanDebtItem {
   entry: LoanDebtEntry;
   /** The originating transaction, when it belongs to the active profile. */
   transaction: Transaction | null;
+  /**
+   * The transaction to show for the entry: its own, or for a split loan ("parent#split-N") the parent
+   * payment it was part of.
+   */
+  sourceTransaction: Transaction | null;
   original: number | null;
   repaid: number;
   remaining: number | null;
@@ -32,6 +38,8 @@ export function buildLoanDebtItems(
   return entries.map((entry) => {
     const reference = entry.transactionReference.trim();
     const transaction = byReference.get(reference) ?? null;
+    const parentReference = transaction ? null : parentReferenceOfSplitLoan(reference);
+    const sourceTransaction = transaction ?? (parentReference ? byReference.get(parentReference) ?? null : null);
     const original =
       entry.principalAmount != null && Number.isFinite(entry.principalAmount)
         ? Math.abs(entry.principalAmount)
@@ -42,7 +50,7 @@ export function buildLoanDebtItems(
     const repaid = own.reduce((sum, r) => sum + r.appliedAmount, 0);
     const remaining = original === null ? null : original - repaid <= EPSILON ? 0 : original - repaid;
     const effectiveStatus: LoanDebtStatus = entry.status === 'active' && remaining === 0 ? 'settled' : entry.status;
-    return { entry, transaction, original, repaid, remaining, effectiveStatus, repayments: own };
+    return { entry, transaction, sourceTransaction, original, repaid, remaining, effectiveStatus, repayments: own };
   });
 }
 

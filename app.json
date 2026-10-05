@@ -2,7 +2,7 @@
   "expo": {
     "name": "Hisab",
     "slug": "hisab",
-    "scheme": "hisab",
+    "scheme": ["hisab", "com.hisab.budget"],
     "version": "1.4.4",
     "orientation": "portrait",
     "icon": "./assets/icon/totals_icon.png",

@@ -16,7 +16,7 @@ import { failedParseRepository } from '../repositories/failedParseRepository';
 import { profileRepository } from '../repositories/profileRepository';
 import { sourceSmsRepository } from '../repositories/sourceSmsRepository';
 import { transactionRepository } from '../repositories/transactionRepository';
-import { resolveSmsOwnership, type SmsOwnership } from '../utils/accountIdentity';
+import { checkSmsOwnership, transactionBelongsToAccount, type SmsOwnership, type SmsOwnershipCheck } from '../utils/accountIdentity';
 import { findBankForSender, normalizeSender, senderAddressMatchesBank } from '../utils/bankSenderMatcher';
 import { CASH_ACCOUNT_NUMBER, CASH_ATM_REFERENCE_PREFIX, CASH_BANK_ID } from '../utils/cashConstants';
 import { hasExactAmountAndBalanceDuplicate } from '../utils/duplicateDetector';
@@ -64,6 +64,7 @@ const EMPTY_SYNC_RESULT: TodaySmsSyncResult = {
 };
 
 const DASHEN_BANK_ID = 4;
+const SCAN_OVERLAP_MS = 10 * 60 * 1000;
 const CANONICAL_INBOX_LOOKUP_ATTEMPTS = 3;
 const CANONICAL_INBOX_LOOKUP_DELAY_MS = 750;
 const CANONICAL_INBOX_LOOKUP_WINDOW_MS = 2 * 60 * 1000;
@@ -122,11 +123,6 @@ async function isRelevantMessage(address: string | null | undefined): Promise<bo
   return (await getRelevantBank(address)) !== null;
 }
 
-async function hasRegisteredAccountForBank(bankId: number): Promise<boolean> {
-  const accounts = await accountRepository.getAccounts();
-  return accounts.some((account) => account.bank === bankId);
-}
-
 async function recordFailedParse(params: {
   address: string;
   body: string;
@@ -134,7 +130,6 @@ async function recordFailedParse(params: {
   timestamp?: Date | null;
   bankId?: number | null;
 }): Promise<void> {
-  if (params.bankId != null && !(await hasRegisteredAccountForBank(params.bankId))) return;
   await failedParseRepository.add({
     address: params.address,
     body: params.body,
@@ -403,9 +398,19 @@ async function captureTransactionSourceSms(params: {
 
 async function updateOwnershipFromSms(
   reference: string,
-  owner: SmsOwnership | null,
+  check: SmsOwnershipCheck,
   options: ProcessOptions,
 ): Promise<void> {
+  if (check.conflict) {
+    // Addressed to someone else's account: drop an automatic owner an older rule gave it.
+    await transactionRepository.updateTransactionOwnership({
+      reference,
+      ownerAccountNumber: null,
+      ownerAssignmentSource: OwnerAssignment.conflict,
+    });
+    return;
+  }
+  const owner = check.owner;
   if (!owner) return;
   await transactionRepository.updateTransactionOwnership({
     reference,
@@ -469,10 +474,9 @@ async function processInternal(body: string, sender: string, options: ProcessOpt
     return { status: 'duplicate', reason: 'Ignored Telebirr airtime receipt acknowledgement' };
   }
 
+  // Messages from banks without a registered account are still saved. Their parsed account
+  // numbers show up as unlabeled accounts the user can name later, without reparsing.
   const registeredAccounts = await accountRepository.getAccounts();
-  if (!registeredAccounts.some((a) => a.bank === bank.id)) {
-    return { status: 'unregisteredBank', reason: 'No registered account for this bank' };
-  }
 
   // 1. Patterns for this bank.
   const patterns = (await smsConfigService.getPatterns({ allowRemoteFetch: false })).filter((p) => p.bankId === bank.id);
@@ -551,16 +555,19 @@ async function processInternal(body: string, sender: string, options: ProcessOpt
 
   const parsedBankId = parsed.bankId ?? bank.id;
   const ownershipBank = parsedBankId === bank.id ? bank : bankById(await bankRepository.getBanks(), parsedBankId);
-  let owner: SmsOwnership | null = null;
+  let ownership: SmsOwnershipCheck = { owner: null, conflict: false };
   if (ownershipBank) {
     const bankAccounts: Account[] = registeredAccounts.filter((a) => a.bank === parsedBankId);
-    owner = resolveSmsOwnership({
+    ownership = checkSmsOwnership({
       body,
       bank: ownershipBank,
       accounts: bankAccounts,
       parsedAccountNumber: parsed.accountNumber,
       subscriptionId,
     });
+    // Addressed to someone else's account: kept unowned so no fallback hands it to one of yours.
+    if (ownership.conflict) details.ownerAssignmentSource = OwnerAssignment.conflict;
+    const owner = ownership.owner;
     if (owner) {
       details.ownerAccountNumber = owner.account.accountNumber;
       details.ownerAssignmentSource = OwnerAssignment.automatic;
@@ -574,6 +581,7 @@ async function processInternal(body: string, sender: string, options: ProcessOpt
       }
     }
   }
+  const owner: SmsOwnership | null = ownership.owner;
 
   const source = buildSmsSource({
     bankId: parsedBankId,
@@ -603,7 +611,7 @@ async function processInternal(body: string, sender: string, options: ProcessOpt
 
   const sourceDuplicate = findSmsSourceDuplicate(details, existing);
   if (sourceDuplicate) {
-    await updateOwnershipFromSms(sourceDuplicate.reference, owner, { ...options, sourceSubscriptionId: subscriptionId });
+    await updateOwnershipFromSms(sourceDuplicate.reference, ownership, { ...options, sourceSubscriptionId: subscriptionId });
     await capture(sourceDuplicate.reference);
     return { status: 'duplicate', reason: 'Duplicate SMS source' };
   }
@@ -612,7 +620,7 @@ async function processInternal(body: string, sender: string, options: ProcessOpt
   if (newRef && existing.some((t) => t.reference === newRef)) {
     // A shared bank reference is not ownership evidence. Telebirr legs are
     // scoped above; any remaining collision is the same logical row.
-    await updateOwnershipFromSms(newRef, owner, { ...options, sourceSubscriptionId: subscriptionId });
+    await updateOwnershipFromSms(newRef, ownership, { ...options, sourceSubscriptionId: subscriptionId });
     await capture(newRef);
     if (isAtmWithdrawal(details, body)) {
       try {
@@ -637,9 +645,19 @@ async function processInternal(body: string, sender: string, options: ProcessOpt
     return { status: 'duplicate', reason };
   }
 
-  // 4. Balance.
+  // 4. Balance, unless the account already has a newer message (scanning an older date range).
   if (owner && parsed.currentBalance != null) {
-    await accountRepository.updateBalance(owner.account.accountNumber, owner.account.bank, sanitizeAmount(parsed.currentBalance));
+    const ownerAccount = owner.account;
+    const at = messageDate?.getTime() ?? Date.now();
+    const bankAccounts = registeredAccounts.filter((a) => a.bank === ownerAccount.bank);
+    const hasNewer = existing.some((t) => {
+      if (t.bankId !== ownerAccount.bank || !t.currentBalance?.trim() || !t.time) return false;
+      const time = new Date(t.time).getTime();
+      return time > at && transactionBelongsToAccount(t, ownerAccount, ownershipBank, bankAccounts);
+    });
+    if (!hasNewer) {
+      await accountRepository.updateBalance(ownerAccount.accountNumber, ownerAccount.bank, sanitizeAmount(parsed.currentBalance));
+    }
   }
 
   // 5. Save.
@@ -795,8 +813,12 @@ async function syncTodayBankSms(): Promise<TodaySmsSyncResult> {
   if (!hasSmsPermission()) return { ...EMPTY_SYNC_RESULT, permissionDenied: true };
   await getAtmCashTransferCutoff();
   const scanEndedAt = new Date();
-  const result = await syncBankSmsRange({ start: startOfDay(scanEndedAt), includeStart: true, end: scanEndedAt });
-  if (result.errors === 0) await setLastSmsCatchupAt(scanEndedAt);
+  const scanStart = startOfDay(scanEndedAt);
+  const result = await syncBankSmsRange({ start: scanStart, includeStart: true, end: scanEndedAt });
+  if (result.errors === 0) {
+    await setLastSmsCatchupAt(scanEndedAt);
+    await extendLastScanAt(scanStart, scanEndedAt);
+  }
   if (result.added > 0) dataChanged.notify();
   return result;
 }
@@ -815,12 +837,12 @@ async function syncMissedBankSmsSinceLastCatchup(): Promise<TodaySmsSyncResult> 
     lastCatchupAt.getTime() > dayStart.getTime() &&
     lastCatchupAt.getTime() <= scanEndedAt.getTime();
 
-  const result = await syncBankSmsRange({
-    start: hasCursor ? lastCatchupAt : dayStart,
-    includeStart: !hasCursor,
-    end: scanEndedAt,
-  });
-  if (result.errors === 0) await setLastSmsCatchupAt(scanEndedAt);
+  const scanStart = hasCursor ? lastCatchupAt : dayStart;
+  const result = await syncBankSmsRange({ start: scanStart, includeStart: !hasCursor, end: scanEndedAt });
+  if (result.errors === 0) {
+    await setLastSmsCatchupAt(scanEndedAt);
+    await extendLastScanAt(scanStart, scanEndedAt);
+  }
   if (result.added > 0) dataChanged.notify();
   return result;
 }
@@ -889,6 +911,12 @@ async function syncBankHistory(params: {
     }
   }
 
+  try {
+    const { reconcileAccounts } = await import('./accountLabeling');
+    await reconcileAccounts();
+  } catch (error) {
+    if (__DEV__) console.warn('debug: Could not reconcile account owners', error);
+  }
   await notificationService
     .showAccountSyncComplete({
       bankId: bank.id,
@@ -899,6 +927,152 @@ async function syncBankHistory(params: {
     .catch(() => undefined);
   dataChanged.notify();
   return result;
+}
+
+/** Whether the one-time import of every bank's SMS history has run for the active profile. */
+async function hasImportedAllBankHistory(): Promise<boolean> {
+  return prefs.getBool(PrefKeys.allBankHistoryImported(await profileRepository.getActiveProfileId()));
+}
+
+type ScanProgress = (processed: number, total: number) => void;
+
+/** Every supported bank message received in [sinceMs, untilMs], without duplicates. */
+async function bankInbox(sinceMs: number, untilMs: number): Promise<RawSms[]> {
+  const banks = await bankRepository.getBanks();
+  const inbox = await getInbox(sinceMs, untilMs);
+  const seen = new Set<string>();
+  return inbox.filter((m) => {
+    if (!m.address || !m.body || !findBankForSender(m.address, banks)) return false;
+    const key = m.id ? `id:${m.id}` : `${m.date}_${m.address}_${m.body}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+/** Parses bank messages oldest first with progress, then re-checks account owners and balances. */
+async function runBankScan(messages: RawSms[], onProgress?: ScanProgress): Promise<TodaySmsSyncResult> {
+  await getAtmCashTransferCutoff();
+  const progressNotice = { bankId: 0, accountNumber: 'all', bankName: 'bank messages' };
+  const result = { ...EMPTY_SYNC_RESULT };
+  const chronological = [...messages].sort((a, b) => (a.date ?? 0) - (b.date ?? 0));
+  onProgress?.(0, chronological.length);
+  for (let i = 0; i < chronological.length; i++) {
+    const message = chronological[i];
+    result.processed++;
+    try {
+      const parsed = await processInternal(message.body!, message.address!, {
+        messageDate: smsDate(message),
+        sourceMessageId: message.id ?? null,
+        sourceSubscriptionId: message.subscriptionId ?? null,
+        notifyUser: false,
+        recordFailure: false,
+      });
+      if (parsed.status === 'success') result.added++;
+      else if (parsed.status === 'duplicate') result.duplicates++;
+      else if (parsed.status === 'noPattern') result.noPattern++;
+      else result.skipped++;
+    } catch (error) {
+      result.errors++;
+      if (__DEV__) console.warn('debug: Error importing bank SMS', error);
+    }
+    if ((i + 1) % 25 === 0 || i + 1 === chronological.length) {
+      onProgress?.(i + 1, chronological.length);
+      if (chronological.length > 50) {
+        void notificationService
+          .showAccountSyncProgress({ ...progressNotice, processed: i + 1, total: chronological.length })
+          .catch(() => undefined);
+      }
+    }
+  }
+  try {
+    const { reconcileAccounts } = await import('./accountLabeling');
+    await reconcileAccounts();
+  } catch (error) {
+    if (__DEV__) console.warn('debug: Could not reconcile account owners', error);
+  }
+  if (chronological.length > 50) {
+    await notificationService.showAccountSyncComplete({ ...progressNotice, added: result.added }).catch(() => undefined);
+  }
+  dataChanged.notify();
+  return result;
+}
+
+async function getStoredLastScanAt(): Promise<Date | null> {
+  const raw = await prefs.getNumber(PrefKeys.smsLastScanAt(await profileRepository.getActiveProfileId()));
+  return raw === null ? null : new Date(raw);
+}
+
+async function setLastFullScanAt(time: Date): Promise<void> {
+  await prefs.setNumber(PrefKeys.smsLastScanAt(await profileRepository.getActiveProfileId()), time.getTime());
+}
+
+/** Moves the last-scan time forward only when [scanStart, scanEnd] continues from it without a gap. */
+async function extendLastScanAt(scanStart: Date, scanEnd: Date): Promise<void> {
+  const last = await getStoredLastScanAt();
+  if (last && last.getTime() >= scanStart.getTime() && last.getTime() < scanEnd.getTime()) await setLastFullScanAt(scanEnd);
+}
+
+/**
+ * When the inbox was last read without gaps up to: the last scan, or for imports made before
+ * this was tracked, the newest bank message already imported. Null when nothing was scanned yet.
+ */
+async function getLastScanAt(): Promise<Date | null> {
+  const stored = await getStoredLastScanAt();
+  if (stored && stored.getTime() <= Date.now()) return stored;
+  if (!(await hasImportedAllBankHistory())) return null;
+  let newest: number | null = null;
+  for (const tx of await transactionRepository.getTransactions()) {
+    if (tx.sourceType !== SMS_SOURCE_TYPE || !tx.time) continue;
+    const time = new Date(tx.time).getTime();
+    if (Number.isFinite(time) && (newest === null || time > newest)) newest = time;
+  }
+  return newest === null ? null : new Date(newest);
+}
+
+/**
+ * Parses the whole inbox once for every supported bank, whether or not an account is
+ * registered for it. Accounts found in the messages show up as unlabeled accounts, so
+ * labeling one later doesn't need another pass over the inbox.
+ */
+async function syncAllBankHistory(params: { onProgress?: ScanProgress } = {}): Promise<TodaySmsSyncResult> {
+  if (Platform.OS !== 'android') return { ...EMPTY_SYNC_RESULT };
+  if (!hasSmsPermission()) return { ...EMPTY_SYNC_RESULT, permissionDenied: true };
+  const scanEndedAt = new Date();
+  const result = await runBankScan(await bankInbox(0, scanEndedAt.getTime()), params.onProgress);
+  if (result.errors === 0) {
+    await prefs.setBool(PrefKeys.allBankHistoryImported(await profileRepository.getActiveProfileId()), true);
+    await setLastFullScanAt(scanEndedAt);
+  }
+  return result;
+}
+
+/**
+ * Reads only the bank messages received since the last scan (a few minutes of overlap catch
+ * messages that arrived while that scan ran; duplicates are skipped). Without an earlier scan
+ * this is the full import.
+ */
+async function syncBankSmsSinceLastScan(params: { onProgress?: ScanProgress } = {}): Promise<TodaySmsSyncResult & { since: Date | null }> {
+  if (Platform.OS !== 'android') return { ...EMPTY_SYNC_RESULT, since: null };
+  if (!hasSmsPermission()) return { ...EMPTY_SYNC_RESULT, permissionDenied: true, since: null };
+  const since = await getLastScanAt();
+  if (!since) return { ...(await syncAllBankHistory(params)), since: null };
+  const scanEndedAt = new Date();
+  const from = Math.max(0, since.getTime() - SCAN_OVERLAP_MS);
+  const result = await runBankScan(await bankInbox(from, scanEndedAt.getTime()), params.onProgress);
+  if (result.errors === 0) {
+    await setLastFullScanAt(scanEndedAt);
+    await setLastSmsCatchupAt(scanEndedAt);
+  }
+  return { ...result, since };
+}
+
+/** Reads the bank messages received between two dates (inclusive). The last-scan time is unchanged. */
+async function syncBankSmsBetween(params: { start: Date; end: Date; onProgress?: ScanProgress }): Promise<TodaySmsSyncResult> {
+  if (Platform.OS !== 'android') return { ...EMPTY_SYNC_RESULT };
+  if (!hasSmsPermission()) return { ...EMPTY_SYNC_RESULT, permissionDenied: true };
+  const end = Math.min(params.end.getTime(), Date.now());
+  return runBankScan(await bankInbox(params.start.getTime(), end), params.onProgress);
 }
 
 // ------------------------------------------------------------------ incoming SMS
@@ -954,6 +1128,11 @@ export const smsService = {
   syncTodayBankSms,
   syncMissedBankSmsSinceLastCatchup,
   syncBankHistory,
+  syncAllBankHistory,
+  syncBankSmsSinceLastScan,
+  syncBankSmsBetween,
+  getLastScanAt,
+  hasImportedAllBankHistory,
   processMessage,
   retryFailedParse,
   getRelevantBank,

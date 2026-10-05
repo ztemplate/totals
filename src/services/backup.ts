@@ -7,26 +7,34 @@ import { bankFromJson } from '../models/bank';
 import { budgetFromDb, budgetSelectedCategoryIds, budgetToDb, type Budget } from '../models/budget';
 import { categoryFromDb, isManagedCategory, normalizeFlow, type Category } from '../models/category';
 import { loanDebtEntryFromDb, loanDebtRepaymentFromDb, type LoanDebtEntry } from '../models/loanDebt';
-import { personAccountKindFromStorage } from '../models/person';
+import { personAccountKindFromStorage, personTypeFromStorage } from '../models/person';
+import { splitFromDb, splitLoanReference, SPLIT_LOAN_SEPARATOR } from '../models/split';
 import { smsPatternFromJson } from '../models/smsPattern';
 import { selectedCategoryIds, transactionFromJson, transactionToJson, type Transaction } from '../models/transaction';
 import { accountRepository } from '../repositories/accountRepository';
 import { bankRepository } from '../repositories/bankRepository';
 import { budgetRepository } from '../repositories/budgetRepository';
+import { cashLinkRepository } from '../repositories/cashLinkRepository';
 import { categoryRepository } from '../repositories/categoryRepository';
 import { failedParseRepository } from '../repositories/failedParseRepository';
 import { loanDebtRepository, type LoanDebtRepaymentAllocation } from '../repositories/loanDebtRepository';
+import { peopleGroupRepository } from '../repositories/peopleGroupRepository';
 import { peopleRepository } from '../repositories/peopleRepository';
 import { reimbursementRepository, type ReimbursementAllocationDraft } from '../repositories/reimbursementRepository';
 import { sourceSmsRepository } from '../repositories/sourceSmsRepository';
+import { splitRepository } from '../repositories/splitRepository';
 import { transactionRepository } from '../repositories/transactionRepository';
 import { userAccountRepository } from '../repositories/userAccountRepository';
 import { autoCategorization } from './autoCategorization';
 import { dataChanged } from './dataChanged';
 import { smsConfigService } from './smsConfigService';
 
-/** Matches DataExportImportService.currentSchemaVersion in the Flutter app. */
-export const BACKUP_SCHEMA_VERSION = 11;
+/**
+ * v11 matches DataExportImportService.currentSchemaVersion in the Flutter app. v12 adds transaction
+ * splits, cash-to-withdrawal links and person type/telegram; v13 adds people groups and person
+ * email/address. Older readers ignore the extra keys.
+ */
+export const BACKUP_SCHEMA_VERSION = 13;
 const MINIMUM_SCHEMA_VERSION = 1;
 
 type Json = Record<string, any>;
@@ -134,10 +142,13 @@ export async function buildExportJson(): Promise<string> {
   const loanDebtRepayments = (await db.getAllAsync<Json>('SELECT * FROM loan_debt_repayments')).map(loanDebtRepaymentFromDb);
   const reimbursements = await reimbursementRepository.getAllocations();
   const sourceSms = await sourceSmsRepository.getForTransactionReferences(transactions.map((t) => t.reference));
-  const [people, personAccounts, personTransactionLinks] = await Promise.all([
+  const [people, personAccounts, personTransactionLinks, transactionSplits, cashSpendLinks, peopleGroups] = await Promise.all([
     peopleRepository.getAllPeople(),
     peopleRepository.getAccounts(),
     peopleRepository.getLinks(),
+    splitRepository.getAll(),
+    cashLinkRepository.getAll(),
+    peopleGroupRepository.getAllGroups(),
   ]);
 
   return JSON.stringify({
@@ -160,6 +171,9 @@ export async function buildExportJson(): Promise<string> {
     people,
     personAccounts,
     personTransactionLinks,
+    peopleGroups: peopleGroups.map((g) => ({ id: g.id, name: g.name, memberIds: g.memberIds, createdAt: g.createdAt })),
+    transactionSplits,
+    cashSpendLinks,
   });
 }
 
@@ -457,7 +471,13 @@ async function importBudgets(data: Json, idMap: Map<number, number>, canMap: boo
   return inserted;
 }
 
-async function importLoanDebts(data: Json): Promise<void> {
+/**
+ * Split loan entries are keyed "parent#split-<id>" and split ids change on import. Returns the new
+ * reference, the reference itself when it is not a split loan, or null when its split was not imported.
+ */
+type LoanReferenceMap = (reference: string) => string | null;
+
+async function importLoanDebts(data: Json, mapReference: LoanReferenceMap): Promise<void> {
   const db = await getDb();
   const entriesByReference = new Map<string, LoanDebtEntry>();
   const entriesRaw = asList(data, 'loanDebtEntries', ['loan_debt_entries']);
@@ -465,10 +485,10 @@ async function importLoanDebts(data: Json): Promise<void> {
     await db.withTransactionAsync(async () => {
       for (const json of entriesRaw) {
         const entry = loanDebtEntryFromDb(json);
-        const reference = entry.transactionReference.trim();
+        const reference = mapReference(entry.transactionReference.trim());
         const personName = entry.personName.trim();
         if (!reference || !personName) continue;
-        entriesByReference.set(reference, entry);
+        entriesByReference.set(reference, { ...entry, transactionReference: reference });
         await db.runAsync(
           `INSERT OR REPLACE INTO loan_debt_entries
              (transactionReference, personName, direction, status, principalAmount, source, returnDate, resolvedAt, createdAt, updatedAt)
@@ -495,7 +515,7 @@ async function importLoanDebts(data: Json): Promise<void> {
   for (const json of repaymentsRaw) {
     const repayment = loanDebtRepaymentFromDb(json);
     const repaymentReference = repayment.repaymentTransactionReference.trim();
-    const loanReference = repayment.loanDebtTransactionReference.trim();
+    const loanReference = mapReference(repayment.loanDebtTransactionReference.trim());
     if (!repaymentReference || !loanReference || repayment.appliedAmount <= 0) continue;
     const list = allocationsByRepayment.get(repaymentReference) ?? [];
     list.push({ loanDebtTransactionReference: loanReference, appliedAmount: repayment.appliedAmount });
@@ -526,17 +546,17 @@ async function importLoanDebts(data: Json): Promise<void> {
   }
 }
 
-/** Merges people by name; aliases and manual links follow the remapped person ids. */
-async function importPeople(data: Json): Promise<void> {
+/** Merges people by name; aliases and manual links follow the remapped person ids. Returns exported id -> local id. */
+async function importPeople(data: Json): Promise<Map<number, number>> {
   const peopleRaw = asList(data, 'people');
   const accountsRaw = asList(data, 'personAccounts', ['person_accounts']);
   const linksRaw = asList(data, 'personTransactionLinks', ['person_transaction_links']);
-  if (peopleRaw.length === 0) return;
+  const idMap = new Map<number, number>();
+  if (peopleRaw.length === 0) return idMap;
 
   const byName = new Map<string, number>();
   for (const person of await peopleRepository.getPeople()) byName.set(person.name.trim().toLowerCase(), person.id);
 
-  const idMap = new Map<number, number>();
   for (const json of peopleRaw) {
     const exportId = asInt(json.id);
     const name = String(json.name ?? '').trim().replace(/\s+/g, ' ');
@@ -549,6 +569,10 @@ async function importPeople(data: Json): Promise<void> {
           name,
           phone: json.phone == null ? null : String(json.phone),
           note: json.note == null ? null : String(json.note),
+          type: personTypeFromStorage(json.type),
+          telegram: json.telegram == null ? null : String(json.telegram),
+          email: json.email == null ? null : String(json.email),
+          address: json.address == null ? null : String(json.address),
         });
         byName.set(key, localId);
       } catch (error) {
@@ -586,6 +610,80 @@ async function importPeople(data: Json): Promise<void> {
     }
     const personId = idMap.get(exportPersonId);
     if (personId !== undefined) await peopleRepository.setTransactionPerson(reference, personId);
+  }
+  return idMap;
+}
+
+/** Merges groups by name; a group that exists locally gains the imported members. */
+async function importPeopleGroups(data: Json, personIdMap: Map<number, number>): Promise<void> {
+  const groupsRaw = asList(data, 'peopleGroups', ['people_groups']);
+  if (groupsRaw.length === 0) return;
+  const existing = new Map((await peopleGroupRepository.getGroups()).map((g) => [g.name.trim().toLowerCase(), g]));
+  for (const json of groupsRaw) {
+    const name = String(json.name ?? '').trim().replace(/\s+/g, ' ');
+    if (!name) continue;
+    const members = (Array.isArray(json.memberIds) ? json.memberIds : [])
+      .map((id: unknown) => personIdMap.get(asInt(id) ?? -1))
+      .filter((id: number | undefined): id is number => id !== undefined);
+    try {
+      const local = existing.get(name.toLowerCase());
+      if (local) await peopleGroupRepository.updateGroup(local.id, local.name, [...local.memberIds, ...members]);
+      else await peopleGroupRepository.createGroup(name, members);
+    } catch (error) {
+      if (__DEV__) console.warn('debug: Skipped people group during import', error);
+    }
+  }
+}
+
+/**
+ * Restores split parts for transactions that have none locally (local splits win). Returns the
+ * mapping for the split loan entries, whose references embed the split id.
+ */
+async function importSplits(
+  data: Json,
+  categoryIdMap: Map<number, number>,
+  canMap: boolean,
+  personIdMap: Map<number, number>,
+): Promise<LoanReferenceMap> {
+  const raw = asList(data, 'transactionSplits', ['transaction_splits']);
+  const referenceMap = new Map<string, string | null>();
+  const mapReference: LoanReferenceMap = (reference) => {
+    if (!reference.includes(SPLIT_LOAN_SEPARATOR)) return reference;
+    // Split loans without a matching split row (or from a skipped parent) are dropped.
+    return referenceMap.get(reference) ?? null;
+  };
+  if (raw.length === 0) return (reference) => reference;
+
+  const references = await existingTransactionReferences();
+  const hasLocalSplits = new Set((await splitRepository.getAll()).map((s) => s.parentReference));
+  for (const json of raw) {
+    const split = splitFromDb(json);
+    const parent = split.parentReference.trim();
+    const oldLoanReference = splitLoanReference(parent, split.id);
+    if (!parent || !references.has(parent) || hasLocalSplits.has(parent) || split.amount <= 0) {
+      referenceMap.set(oldLoanReference, null);
+      continue;
+    }
+    const categoryId =
+      split.categoryId == null ? null : (categoryIdMap.get(split.categoryId) ?? (canMap ? null : split.categoryId));
+    const personId = split.personId == null ? null : (personIdMap.get(split.personId) ?? null);
+    const id = await splitRepository.insertRaw({ ...split, parentReference: parent, categoryId, personId });
+    referenceMap.set(oldLoanReference, splitLoanReference(parent, id));
+  }
+  return mapReference;
+}
+
+async function importCashLinks(data: Json): Promise<void> {
+  const raw = asList(data, 'cashSpendLinks', ['cash_spend_links']);
+  if (raw.length === 0) return;
+  const references = await existingTransactionReferences();
+  const linked = new Set((await cashLinkRepository.getAll()).map((l) => l.cashReference));
+  for (const json of raw) {
+    const cash = String(json.cashReference ?? '').trim();
+    const withdrawal = String(json.withdrawalReference ?? '').trim();
+    if (!cash || !withdrawal || linked.has(cash) || !references.has(cash) || !references.has(withdrawal)) continue;
+    await cashLinkRepository.link(cash, withdrawal);
+    linked.add(cash);
   }
 }
 
@@ -683,8 +781,11 @@ export async function importBackupJson(jsonData: string): Promise<ImportSummary>
   await importSourceSms(data);
   await importReimbursements(data);
   const budgets = await importBudgets(data, idMap, canMap);
-  await importLoanDebts(data);
-  await importPeople(data);
+  const personIdMap = await importPeople(data);
+  await importPeopleGroups(data, personIdMap);
+  const mapLoanReference = await importSplits(data, idMap, canMap, personIdMap);
+  await importLoanDebts(data, mapLoanReference);
+  await importCashLinks(data);
   await importAutoCategorization(data, idMap, canMap);
   await importFailedParses(data);
   await importSmsPatterns(data);

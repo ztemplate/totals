@@ -1,6 +1,6 @@
 import type { Account } from '../models/account';
 import type { Bank } from '../models/bank';
-import type { Transaction } from '../models/transaction';
+import { OwnerAssignment, type Transaction } from '../models/transaction';
 
 export function isSimBank(bank: Bank | null | undefined): boolean {
   return bank?.simBased === true;
@@ -118,21 +118,25 @@ export function resolveAccountOwnership(params: {
   const bankAccounts = accounts.filter((a) => bank && a.bank === bank.id);
   if (bankAccounts.length === 0) return null;
 
+  // A printed account number is the strongest evidence: with several accounts at one bank the
+  // holder name and the SIM are usually shared, the number is not.
+  let candidates = bankAccounts;
+  if (params.parsedNumber) {
+    candidates = bankAccounts.filter((a) => accountNumbersMatch(bank, a.accountNumber, params.parsedNumber));
+    if (candidates.length === 0) return null;
+    if (candidates.length === 1) return candidates[0];
+  }
+
   const holder = canonicalAccountHolderName(params.holderName);
   if (holder) {
-    const byName = unique(bankAccounts.filter((a) => canonicalAccountHolderName(a.accountHolderName) === holder));
+    const byName = unique(candidates.filter((a) => canonicalAccountHolderName(a.accountHolderName) === holder));
     if (byName) return byName;
   }
 
   const sub = params.subscriptionId;
   if (sub !== null && sub !== undefined && sub >= 0) {
-    const bySub = unique(bankAccounts.filter((a) => a.smsSubscriptionId === sub));
+    const bySub = unique(candidates.filter((a) => a.smsSubscriptionId === sub));
     if (bySub) return bySub;
-  }
-
-  if (params.parsedNumber) {
-    const byNumber = unique(bankAccounts.filter((a) => accountNumbersMatch(bank, a.accountNumber, params.parsedNumber)));
-    if (byNumber) return byNumber;
   }
   return null;
 }
@@ -158,21 +162,40 @@ function escapeRegex(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&');
 }
 
+function nameRe(name: string): RegExp {
+  return new RegExp(`(?:^|\\s)${escapeRegex(name)}(?:\\s|$)`, 'i');
+}
+
+/** How a greeting matches a holder name: the full name, only the first name, or not at all. */
+function greetingNameMatch(greeting: string, holderName: string | null | undefined): 'full' | 'first' | null {
+  const holder = canonicalAccountHolderName(holderName);
+  if (!holder) return null;
+  if (nameRe(holder).test(greeting)) return 'full';
+  const first = holder.split(' ')[0];
+  return first && nameRe(first).test(greeting) ? 'first' : null;
+}
+
+/**
+ * Whether a greeting can be addressed to this holder: it shares a word of the name ("Dear Kebede"
+ * or "Dear A. Kebede" for Abebe Kebede). Looser than matchGreetingOwner, which picks an owner; this
+ * only rules accounts out.
+ */
+function greetingFitsHolder(greeting: string, holderName: string | null | undefined): boolean {
+  if (greetingNameMatch(greeting, holderName)) return true;
+  const words = canonicalAccountHolderName(holderName)
+    .split(' ')
+    .filter((w) => w.replace(/[^\p{L}]/gu, '').length >= 2);
+  return words.some((w) => nameRe(w).test(greeting));
+}
+
 /** Matches an SMS greeting against account holder names (full name, then first name). */
 export function matchGreetingOwner(greeting: string, accounts: Account[]): Account | null {
   const fullMatches: Account[] = [];
   const firstMatches: Account[] = [];
   for (const account of accounts) {
-    const holder = canonicalAccountHolderName(account.accountHolderName);
-    if (!holder) continue;
-    const full = new RegExp(`(?:^|\\s)${escapeRegex(holder)}(?:\\s|$)`, 'i');
-    if (full.test(greeting)) {
-      fullMatches.push(account);
-      continue;
-    }
-    const first = holder.split(' ')[0];
-    const firstRe = new RegExp(`(?:^|\\s)${escapeRegex(first)}(?:\\s|$)`, 'i');
-    if (first && firstRe.test(greeting)) firstMatches.push(account);
+    const match = greetingNameMatch(greeting, account.accountHolderName);
+    if (match === 'full') fullMatches.push(account);
+    else if (match === 'first') firstMatches.push(account);
   }
   if (fullMatches.length === 1) return fullMatches[0];
   if (fullMatches.length > 1) return null;
@@ -209,43 +232,85 @@ export interface SmsOwnership {
   matchedByGreeting: boolean;
 }
 
-export function resolveSmsOwnership(params: {
+export interface SmsOwnershipCheck {
+  owner: SmsOwnership | null;
+  /**
+   * The message names a person and an account, and no registered account has both: it is someone
+   * else's message (a family member's account at the same bank, say) and must not be given to an
+   * account on the number, SIM or default alone.
+   */
+  conflict: boolean;
+}
+
+/**
+ * Decides which registered account an SMS belongs to.
+ *
+ * Evidence is the account number printed in the message and the name it greets. When the message
+ * has both, the owner must match both. An account without a holder name can't be checked on the
+ * name, so its number decides. Only when one of them is missing does the other decide, and only
+ * when both are missing (or several accounts still fit) do the receiving SIM and then the default
+ * account decide.
+ */
+export function checkSmsOwnership(params: {
   body: string;
   bank: Bank | null | undefined;
   accounts: Account[];
   parsedAccountNumber?: string | null;
   subscriptionId?: number | null;
-}): SmsOwnership | null {
+}): SmsOwnershipCheck {
+  const none: SmsOwnershipCheck = { owner: null, conflict: false };
   const { body, bank, accounts } = params;
-  if (!bank) return null;
+  if (!bank) return none;
   const bankAccounts = accounts.filter((a) => a.bank === bank.id);
-  if (bankAccounts.length === 0) return null;
+  if (bankAccounts.length === 0) return none;
 
-  const greeting = greetingName(body);
-  if (greeting && !isGenericGreeting(greeting)) {
-    const owner = matchGreetingOwner(greeting, bankAccounts);
-    if (!owner) return null;
-    const resolved = resolveAccountOwnership({ bank, accounts: bankAccounts, holderName: owner.accountHolderName });
-    return { account: resolved ?? owner, matchedByGreeting: true };
+  // Wallet numbers parsed from SIM-based banks can be the counterparty, so only "your account ..."
+  // counts there.
+  const yours = yourAccountNumbers(body);
+  const printed = yours.length > 0 ? yours : !isSimBank(bank) && params.parsedAccountNumber ? [params.parsedAccountNumber] : [];
+  const rawGreeting = greetingName(body);
+  const greeting = rawGreeting && !isGenericGreeting(rawGreeting) ? rawGreeting : null;
+
+  let candidates = bankAccounts;
+  if (printed.length > 0) {
+    candidates = bankAccounts.filter((a) => printed.some((n) => accountNumbersMatch(bank, a.accountNumber, n)));
+    // An account that isn't registered; it shows up as an unlabeled account.
+    if (candidates.length === 0) return none;
   }
 
-  const numbers = yourAccountNumbers(body);
-  if (numbers.length > 0) {
-    const matches = bankAccounts.filter((a) => numbers.some((n) => accountNumbersMatch(bank, a.accountNumber, n)));
-    const match = unique(matches);
-    return match ? { account: match, matchedByGreeting: false } : null;
+  let nameFits = false;
+  if (greeting) {
+    const owner = matchGreetingOwner(greeting, candidates);
+    if (owner) return { owner: { account: owner, matchedByGreeting: true }, conflict: false };
+    const byName = candidates.filter((a) => greetingFitsHolder(greeting, a.accountHolderName));
+    // Accounts without a holder name can't be ruled out by the greeting, so for them the name counts
+    // as missing.
+    const unnamed = candidates.filter((a) => !canonicalAccountHolderName(a.accountHolderName));
+    if (byName.length === 0 && unnamed.length === 0) return { owner: null, conflict: true };
+    nameFits = byName.length > 0;
+    candidates = nameFits ? byName : unnamed;
   }
 
-  const resolved = resolveAccountOwnership({
-    bank,
-    accounts: bankAccounts,
-    subscriptionId: params.subscriptionId,
-    parsedNumber: isSimBank(bank) ? null : params.parsedAccountNumber,
-  });
-  if (resolved) return { account: resolved, matchedByGreeting: false };
+  const found = (account: Account): SmsOwnershipCheck => ({ owner: { account, matchedByGreeting: false }, conflict: false });
+  if (candidates.length === 1 && (printed.length > 0 || nameFits)) return found(candidates[0]);
 
-  const fallback = unique(bankAccounts.filter((a) => a.isDefault));
-  return fallback ? { account: fallback, matchedByGreeting: false } : null;
+  const subscriptionId = params.subscriptionId;
+  if (subscriptionId != null && subscriptionId >= 0) {
+    const bySub = unique(candidates.filter((a) => a.smsSubscriptionId === subscriptionId));
+    if (bySub) return found(bySub);
+  }
+
+  const fallback = unique(candidates.filter((a) => a.isDefault));
+  return fallback ? found(fallback) : none;
+}
+
+export function resolveSmsOwnership(params: Parameters<typeof checkSmsOwnership>[0]): SmsOwnership | null {
+  return checkSmsOwnership(params).owner;
+}
+
+/** Whether a message was found to be addressed to someone else's account. */
+export function isOwnershipConflict(tx: Transaction): boolean {
+  return tx.ownerAssignmentSource === OwnerAssignment.conflict && !tx.ownerAccountNumber;
 }
 
 export function resolveTransactionOwnership(
@@ -258,6 +323,7 @@ export function resolveTransactionOwnership(
   if (tx.ownerAccountNumber) {
     return unique(bankAccounts.filter((a) => registeredAccountNumbersMatch(bank, a.accountNumber, tx.ownerAccountNumber)));
   }
+  if (isOwnershipConflict(tx)) return null;
   return resolveAccountOwnership({
     bank,
     accounts: bankAccounts,
@@ -277,6 +343,7 @@ export function transactionBelongsToAccount(
   if (tx.ownerAccountNumber) {
     return registeredAccountNumbersMatch(bank, tx.ownerAccountNumber, account.accountNumber);
   }
+  if (isOwnershipConflict(tx)) return false;
   const owner = resolveTransactionOwnership(tx, bank, accounts);
   if (owner) return owner.accountNumber === account.accountNumber;
   const bankAccounts = accounts.filter((a) => a.bank === account.bank);

@@ -8,6 +8,7 @@ import { isCredit, selectedCategoryIds, txDate, type Transaction } from '../mode
 import { useData } from '../store/dataStore';
 import { useSettings, useTheme } from '../store/settingsStore';
 import { categoryColor, spacing } from '../theme/colors';
+import { CASH_ATM_REFERENCE_PREFIX } from '../utils/cashConstants';
 import { formatMoney, formatTime, initials, relativeDayLabel, titleCase } from '../utils/format';
 import { transactionFeeAmount } from '../utils/transactionAmounts';
 import { Icon, Pill } from './ui';
@@ -81,7 +82,7 @@ export function categoriesFor(tx: Transaction, categories: Category[]): Category
 
 export function TransactionRow(props: { tx: Transaction; onPress?: () => void; showDate?: boolean }) {
   const colors = useTheme();
-  const { banksWithCash, categories, selfTransferReferences } = useData();
+  const { banksWithCash, categories, selfTransferReferences, splitsByParent } = useData();
   const calendar = useSettings((s) => s.calendar);
   const { tx } = props;
   const credit = isCredit(tx);
@@ -90,6 +91,9 @@ export function TransactionRow(props: { tx: Transaction; onPress?: () => void; s
   const primary = txCategories[0];
   const date = txDate(tx);
   const self = selfTransferReferences.has(tx.reference);
+  const splitCount = splitsByParent.get(tx.reference)?.length ?? 0;
+  // A bank debit mirrored into the cash wallet is an ATM withdrawal: money moved to your pocket.
+  const toPocket = !credit && selfTransferReferences.has(`${CASH_ATM_REFERENCE_PREFIX}${tx.reference}`);
   const amount = credit ? Math.abs(tx.amount) : Math.abs(tx.amount) + transactionFeeAmount(tx);
   const subtitleParts = [
     primary ? (txCategories.length > 1 ? `${primary.name} +${txCategories.length - 1}` : primary.name) : 'Uncategorized',
@@ -124,7 +128,12 @@ export function TransactionRow(props: { tx: Transaction; onPress?: () => void; s
           color={self ? colors.textSecondary : credit ? colors.income : colors.text}
           style={txStyles.amount}
         />
-        {self ? <Pill label="Self" color={colors.info} /> : null}
+        {toPocket ? (
+          <Pill label="To pocket" color={colors.info} />
+        ) : self ? (
+          <Pill label="Self" color={colors.info} />
+        ) : null}
+        {splitCount > 0 ? <Pill label={`Split · ${splitCount}`} color={colors.primary} /> : null}
       </View>
     </Pressable>
   );

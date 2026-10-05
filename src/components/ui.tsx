@@ -353,7 +353,8 @@ export function Sheet(props: { visible: boolean; onClose: () => void; title?: st
   const insets = useSafeAreaInsets();
   return (
     <Modal visible={props.visible} transparent animationType="slide" onRequestClose={props.onClose}>
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.flex}>
+      {/* Edge-to-edge Android doesn't resize the modal window for the keyboard, so pad on both platforms. */}
+      <KeyboardAvoidingView behavior="padding" style={styles.flex}>
         <Pressable style={styles.backdrop} onPress={props.onClose} />
         <View style={[styles.sheet, { backgroundColor: colors.background, paddingBottom: insets.bottom + spacing.lg }]}>
           <View style={[styles.sheetHandle, { backgroundColor: colors.border }]} />

@@ -4,7 +4,7 @@ import type { NativeStackNavigationProp, NativeStackScreenProps } from '@react-n
 
 export type TabParamList = {
   Home: undefined;
-  Money: { flow?: 'all' | 'income' | 'expense'; bankId?: number | null } | undefined;
+  Money: { flow?: 'all' | 'income' | 'expense'; bankId?: number | null; tab?: 'activity' | 'accounts' | 'people' } | undefined;
   Budget: undefined;
   Shared: undefined;
   Settings: undefined;
@@ -16,7 +16,7 @@ export type RootStackParamList = {
   Accounts: undefined;
   AccountDetail: { accountNumber: string; bank: number };
   AddAccount: { accountNumber?: string; bank?: number; accountHolderName?: string } | undefined;
-  AddCash: { type?: 'DEBIT' | 'CREDIT' } | undefined;
+  AddCash: { type?: 'DEBIT' | 'CREDIT'; withdrawalReference?: string } | undefined;
   Loans: { reference?: string } | undefined;
   Categories: undefined;
   AutoCategorization: undefined;
@@ -29,6 +29,7 @@ export type RootStackParamList = {
   ScanAccount: undefined;
   People: undefined;
   PersonDetail: { personId: number };
+  DriveBackup: undefined;
 };
 
 export type StackScreenProps<T extends keyof RootStackParamList> = NativeStackScreenProps<RootStackParamList, T>;

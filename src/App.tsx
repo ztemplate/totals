@@ -36,6 +36,7 @@ import {
   ProfilesScreen,
   SettingsScreen,
 } from './screens/SettingsScreens';
+import { DriveBackupScreen } from './screens/DriveBackupScreen';
 import { SharedGroupScreen, SharedScreen } from './screens/SharedScreens';
 import { TransactionDetailScreen } from './screens/TransactionDetailScreen';
 import { appLock } from './services/appLock';
@@ -133,6 +134,7 @@ function RootNavigator() {
       <Stack.Screen name="BudgetEdit" component={BudgetEditScreen} options={{ title: 'Budget' }} />
       <Stack.Screen name="People" component={PeopleScreen} />
       <Stack.Screen name="PersonDetail" component={PersonDetailScreen} options={{ title: 'Person' }} />
+      <Stack.Screen name="DriveBackup" component={DriveBackupScreen} options={{ title: 'Google Drive backup' }} />
     </Stack.Navigator>
   );
 }
@@ -211,6 +213,12 @@ async function startBackgroundServices(): Promise<() => void> {
         unsubscribe = startSmsListener(() => dataChanged.notify());
         const result = await smsService.syncMissedBankSmsSinceLastCatchup();
         if (result.added > 0) dataChanged.notify();
+        if (!(await smsService.hasImportedAllBankHistory())) {
+          // One pass over the whole inbox finds every account, labeled or not.
+          void smsService.syncAllBankHistory().catch((error) => {
+            if (__DEV__) console.warn('debug: Bank SMS history import failed', error);
+          });
+        }
       }
     } catch (error) {
       if (__DEV__) console.warn('debug: SMS setup failed', error);

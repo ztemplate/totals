@@ -394,6 +394,15 @@ export function SettingsScreen() {
           onPress={() => void importBackup()}
           right={spinner('import')}
         />
+        <Divider />
+        <ListRow
+          title="Google Drive backup"
+          subtitle="Back up to a private folder in your own Drive"
+          icon="cloud-upload"
+          chevron
+          disabled={busy !== null}
+          onPress={() => navigation.navigate('DriveBackup')}
+        />
       </Card>
 
       <SectionTitle title="Danger zone" />

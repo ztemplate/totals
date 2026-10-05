@@ -61,6 +61,11 @@ export const PrefKeys = {
   homeHiddenBanks: 'home_hidden_banks',
   smsCatchupCursor: (profileId: number | null | undefined) =>
     `sms_last_catchup_epoch_ms_profile_${profileId ?? 'default'}`,
+  smsLastScanAt: (profileId: number | null | undefined) =>
+    `sms_last_inbox_scan_epoch_ms_profile_${profileId ?? 'default'}`,
+  allBankHistoryImported: (profileId: number | null | undefined) =>
+    `all_bank_sms_history_imported_profile_${profileId ?? 'default'}`,
+  driveBackup: 'google_drive_backup_state',
   atmCashCutoff: (profileId: number | null | undefined) =>
     `atm_cash_transfer_cutoff_iso_profile_${profileId ?? 'default'}`,
 };

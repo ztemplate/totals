@@ -4,6 +4,7 @@ import { Alert, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'r
 import { confirm, showError } from '../components/dialogs';
 import { AmountText, BankAvatar, CategoryIcon, counterpartyOf } from '../components/finance';
 import { PersonPickerSheet } from '../components/people';
+import { CashSourceSection, PocketSection, SplitEditorSheet, SplitSection, isCashSpend, pocketWithdrawalFor } from '../components/splits';
 import { Button, Card, Chip, Divider, EmptyState, Icon, ListRow, Loading, SectionTitle, Sheet, TextField, styles as ui } from '../components/ui';
 import {
   isLoanDebtCategory,
@@ -25,9 +26,11 @@ import {
 } from '../models/transaction';
 import type { StackScreenProps } from '../navigation/types';
 import { bankById } from '../repositories/bankRepository';
+import { cashLinkRepository } from '../repositories/cashLinkRepository';
 import { loanDebtRepository } from '../repositories/loanDebtRepository';
 import { peopleRepository } from '../repositories/peopleRepository';
 import { reimbursementRepository } from '../repositories/reimbursementRepository';
+import { splitRepository } from '../repositories/splitRepository';
 import { sourceSmsRepository } from '../repositories/sourceSmsRepository';
 import { transactionRepository } from '../repositories/transactionRepository';
 import { autoCategorization } from '../services/autoCategorization';
@@ -35,6 +38,7 @@ import { loadLoanDebtItems, type LoanDebtItem } from '../services/loanDebtSummar
 import { notifyDataChanged, useData } from '../store/dataStore';
 import { useSettings, useTheme } from '../store/settingsStore';
 import { spacing } from '../theme/colors';
+import { atmWithdrawalReferences, isOpenableLink, withdrawalReferenceOf } from '../utils/cashPocket';
 import { addDays, parseDateInput, toDateInput } from '../utils/dates';
 import { formatDateTime, formatMoney, formatNumber, maskAccountNumber, parseAmountInput, titleCase } from '../utils/format';
 import { matchTransactionToPerson, type PeopleIndex } from '../utils/personMatching';
@@ -77,7 +81,7 @@ export function TransactionDetailScreen({ route, navigation }: StackScreenProps<
   const { reference } = route.params;
   const colors = useTheme();
   const calendar = useSettings((s) => s.calendar);
-  const { transactions, categories, banksWithCash, selfTransferReferences, version } = useData();
+  const { transactions, categories, banksWithCash, selfTransferReferences, splitsByParent, version } = useData();
 
   const storeTx = useMemo(() => transactions.find((t) => t.reference === reference) ?? null, [transactions, reference]);
   const [fetchedTx, setFetchedTx] = useState<Transaction | null | undefined>(undefined);
@@ -90,6 +94,8 @@ export function TransactionDetailScreen({ route, navigation }: StackScreenProps<
   const [sheet, setSheet] = useState<SheetKind | null>(null);
   const [pendingIds, setPendingIds] = useState<number[]>([]);
   const [showSms, setShowSms] = useState(false);
+  const [splitSheet, setSplitSheet] = useState(false);
+  const atmRefs = useMemo(() => atmWithdrawalReferences(transactions), [transactions]);
 
   useEffect(() => {
     if (storeTx) return;
@@ -164,6 +170,11 @@ export function TransactionDetailScreen({ route, navigation }: StackScreenProps<
   const note = noteDraft ?? tx.note ?? '';
   const noteDirty = noteDraft !== null && noteDraft.trim() !== (tx.note ?? '').trim();
   const selectedManaged = selected.map((id) => categoriesById.get(id)).filter((c): c is Category => isManagedCategory(c));
+  const splits = splitsByParent.get(tx.reference) ?? [];
+  const pocketWithdrawal = pocketWithdrawalFor(tx, transactions, atmRefs);
+  const atmWithdrawalRef = withdrawalReferenceOf(tx);
+  // Loan/repayment/reimbursement transactions already carry their own links; splitting them would double count.
+  const canSplit = selectedManaged.length === 0 && !isSelf && !pocketWithdrawal;
 
   const saveCategories = async (ids: number[], promptRule: boolean) => {
     const primary = tx.categoryId != null && ids.includes(tx.categoryId) ? tx.categoryId : ids[0] ?? null;
@@ -351,6 +362,8 @@ export function TransactionDetailScreen({ route, navigation }: StackScreenProps<
     await run('Could not delete', async () => {
       await loanDebtRepository.deleteRepaymentForTransaction(tx.reference);
       await loanDebtRepository.deleteEntryForTransaction(tx.reference);
+      await splitRepository.deleteForTransaction(tx.reference);
+      await cashLinkRepository.unlink(tx.reference);
       await transactionRepository.deleteTransactionsByReferences([tx.reference]);
       notifyDataChanged();
       navigation.goBack();
@@ -421,7 +434,14 @@ export function TransactionDetailScreen({ route, navigation }: StackScreenProps<
           {tx.vat ? <DetailRow label="VAT" value={formatMoney(tx.vat)} /> : null}
           {fees > 0 && !credit ? <DetailRow label="Total outflow" value={formatMoney(transactionDebitOutflow(tx))} /> : null}
           {tx.currentBalance ? <DetailRow label="Balance after" value={`ETB ${tx.currentBalance}`} /> : null}
-          {tx.transactionLink ? (
+          {atmWithdrawalRef ? (
+            <DetailRow
+              label="Withdrawal"
+              value="Open"
+              icon="local-atm"
+              onPress={() => navigation.push('TransactionDetail', { reference: atmWithdrawalRef })}
+            />
+          ) : isOpenableLink(tx.transactionLink) ? (
             <DetailRow
               label="Receipt"
               value="Open"
@@ -450,6 +470,26 @@ export function TransactionDetailScreen({ route, navigation }: StackScreenProps<
             <Text style={[styles.hint, { color: colors.textMuted }]}>The starred category is the primary one used in reports.</Text>
           ) : null}
         </Card>
+
+        {canSplit ? (
+          <SplitSection
+            tx={tx}
+            splits={splits}
+            people={peopleIndex?.byId ?? new Map()}
+            onEdit={() => setSplitSheet(true)}
+            onOpenPerson={(personId) => navigation.push('PersonDetail', { personId })}
+          />
+        ) : null}
+
+        {pocketWithdrawal ? (
+          <PocketSection
+            withdrawal={pocketWithdrawal}
+            onOpenTransaction={(ref) => navigation.push('TransactionDetail', { reference: ref })}
+            onAddCashSpend={() => navigation.navigate('AddCash', { type: 'DEBIT', withdrawalReference: pocketWithdrawal.reference })}
+          />
+        ) : isCashSpend(tx) ? (
+          <CashSourceSection tx={tx} onOpenTransaction={(ref) => navigation.push('TransactionDetail', { reference: ref })} />
+        ) : null}
 
         {selectedManaged.map((category) => (
           <ManagedLinkCard
@@ -551,6 +591,7 @@ export function TransactionDetailScreen({ route, navigation }: StackScreenProps<
         onClose={() => setSheet(null)}
         onSaved={onSheetSaved}
       />
+      <SplitEditorSheet visible={splitSheet} tx={tx} splits={splits} onClose={() => setSplitSheet(false)} />
       <PersonPickerSheet
         visible={personSheet}
         tx={tx}
@@ -914,7 +955,7 @@ function RepaymentSheet(props: {
         {candidates.map((item) => {
           const ref = item.entry.transactionReference;
           const isSelected = ref in drafts;
-          const d = item.transaction ? txDate(item.transaction) : null;
+          const d = item.sourceTransaction ? txDate(item.sourceTransaction) : null;
           return (
             <Card key={ref} style={{ gap: spacing.sm, padding: spacing.md }}>
               <Pressable onPress={() => toggle(item)} style={ui.rowCenter}>

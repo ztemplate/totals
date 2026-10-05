@@ -3,7 +3,7 @@ import { BUILT_IN_CATEGORIES } from '../models/category';
 import { BUNDLED_BANKS } from '../data/banks';
 
 export const DB_NAME = 'totals.db';
-export const SCHEMA_VERSION = 34;
+export const SCHEMA_VERSION = 36;
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS categories (
@@ -295,6 +295,8 @@ CREATE TABLE IF NOT EXISTS people (
   name TEXT NOT NULL,
   phone TEXT,
   note TEXT,
+  type TEXT,
+  telegram TEXT,
   profileId INTEGER,
   createdAt TEXT NOT NULL,
   updatedAt TEXT
@@ -324,7 +326,68 @@ AFTER DELETE ON transactions
 BEGIN
   DELETE FROM person_transaction_links WHERE transactionReference = OLD.reference;
 END;
+
+CREATE TABLE IF NOT EXISTS transaction_splits (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  parentReference TEXT NOT NULL,
+  amount REAL NOT NULL,
+  kind TEXT NOT NULL DEFAULT 'expense',
+  categoryId INTEGER,
+  personId INTEGER,
+  note TEXT,
+  createdAt TEXT NOT NULL,
+  updatedAt TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_transaction_splits_parent ON transaction_splits(parentReference);
+CREATE TRIGGER IF NOT EXISTS trg_transaction_splits_tx_delete
+AFTER DELETE ON transactions
+BEGIN
+  DELETE FROM loan_debt_entries WHERE substr(transactionReference, 1, length(OLD.reference) + 7) = OLD.reference || '#split-';
+  DELETE FROM transaction_splits WHERE parentReference = OLD.reference;
+END;
+
+CREATE TABLE IF NOT EXISTS cash_spend_links (
+  cashReference TEXT PRIMARY KEY NOT NULL,
+  withdrawalReference TEXT NOT NULL,
+  createdAt TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_cash_spend_links_withdrawal ON cash_spend_links(withdrawalReference);
+CREATE TRIGGER IF NOT EXISTS trg_cash_spend_links_tx_delete
+AFTER DELETE ON transactions
+BEGIN
+  DELETE FROM cash_spend_links WHERE cashReference = OLD.reference OR withdrawalReference = OLD.reference;
+END;
+
+CREATE TABLE IF NOT EXISTS people_groups (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  profileId INTEGER,
+  createdAt TEXT NOT NULL,
+  updatedAt TEXT
+);
+CREATE TABLE IF NOT EXISTS people_group_members (
+  groupId INTEGER NOT NULL,
+  personId INTEGER NOT NULL,
+  PRIMARY KEY (groupId, personId)
+);
 `;
+
+/** Columns added after a table was first created. CREATE TABLE IF NOT EXISTS won't add them to old installs. */
+const ADDED_COLUMNS: { table: string; column: string; definition: string }[] = [
+  { table: 'people', column: 'type', definition: 'TEXT' },
+  { table: 'people', column: 'telegram', definition: 'TEXT' },
+  { table: 'people', column: 'email', definition: 'TEXT' },
+  { table: 'people', column: 'address', definition: 'TEXT' },
+];
+
+async function addMissingColumns(db: SQLite.SQLiteDatabase): Promise<void> {
+  for (const { table, column, definition } of ADDED_COLUMNS) {
+    const columns = await db.getAllAsync<{ name: string }>(`PRAGMA table_info(${table})`);
+    if (!columns.some((c) => c.name === column)) {
+      await db.execAsync(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+    }
+  }
+}
 
 let dbPromise: Promise<SQLite.SQLiteDatabase> | null = null;
 
@@ -346,6 +409,7 @@ async function open(): Promise<SQLite.SQLiteDatabase> {
   if (version < SCHEMA_VERSION) {
     await db.withTransactionAsync(async () => {
       await db.execAsync(SCHEMA);
+      await addMissingColumns(db);
       await seedBuiltInCategories(db);
       await seedBanks(db);
       await db.execAsync(`PRAGMA user_version = ${SCHEMA_VERSION}`);
@@ -416,6 +480,10 @@ export async function resetDatabase(): Promise<void> {
       'people',
       'person_accounts',
       'person_transaction_links',
+      'transaction_splits',
+      'cash_spend_links',
+      'people_groups',
+      'people_group_members',
     ]) {
       await db.runAsync(`DELETE FROM ${table}`);
     }
