@@ -49,7 +49,13 @@ After that, `bun start` runs Metro for the installed dev client.
 - **Auto categorization**
   - Learns counterparty → category rules separately for expenses and income. A rule can point to several categories, with one marked primary.
   - Asks you to categorize new counterparties. The prompt can be dismissed per counterparty, and you can manage rules and dismissals in Settings.
-- **Budgets**: budgets per category and per period, with progress, on either the Gregorian or the Ethiopian calendar.
+- **Budgets** (Budget tab: *Budgets*, *Categories*, *Planned*, *Income*)
+  - Budgets per category and per period, with progress.
+  - **Planned** lists things you plan to buy, each a *must*, *need* or *want*, with a price, an optional needed-by date, money already saved and a note. The money you have is handed out musts first, then needs, then wants (earliest date first), and the summary shows how much you are short for each tier and in total. A toggle also counts certain or likely income still to come this year. Bought items move to a *Bought* list.
+  - **Income** has three parts:
+    - *Expected income*: one-time or recurring (weekly, every 2 weeks, monthly, every 3 months, yearly) with a first and optional last payment and a certainty. It shows what you will make this year, what is already due and what is still to come. "This year" follows the calendar setting: Meskerem 1 to the end of Pagume, or January to December. On the Ethiopian calendar monthly income is paid in the 12 thirty-day months and skips Pagume.
+    - *Assets*: estimated worth and how fast each could be sold (cash, days, weeks, months, hard). Totals show the full worth, a quick-sale value (100/95/85/70/50% by liquidity) and what you could raise within about a week.
+    - *Ways to earn*: ideas with a reward, the hours they take, how hard those hours are (1–5) and the chance they pay off. They are ranked by expected money per effort-hour (reward × chance ÷ (hours × 1–2 for strain)) and compared with what an ordinary hour of yours earns (regular yearly income ÷ 2,080 h). Small, likely ideas are marked *Quick win*.
 - **Loans and debts**: tracks money lent and borrowed, with reminder notifications.
 - **People** (Money → People)
   - Groups transactions by person. One person can have several accounts across banks (CBE, telebirr, …) and phone numbers.
@@ -68,9 +74,9 @@ After that, `bun start` runs Metro for the installed dev client.
   - Notification history and a test notification for each type.
 - **App lock**: biometric or device-credential lock through `expo-local-authentication`.
 - **Backup**
-  - Exports and imports a JSON backup through the share sheet and document picker. Backups include splits, cash links, people and people groups. Settings also has a danger-zone reset.
+  - Exports and imports a JSON backup through the share sheet and document picker. Backups include splits, cash links, people, people groups, planned items, expected income, assets and ways to earn. Settings also has a danger-zone reset.
   - **Google Drive backup** (Settings → Google Drive backup) uploads the same backup to the hidden app-data folder of your own Drive. No server of ours is involved, and the app can't see any other Drive file. It supports backing up now, automatic daily or weekly backups from the background task, keeping the newest 3/5/10/20, and restore (verified by checksum, merged like an import) or delete.
-- **Appearance**: light, dark or system theme, and a choice of calendar.
+- **Appearance**: light, dark or system theme, and a choice of calendar. On the Ethiopian calendar everything follows it: month navigation and labels (Meskerem, Tikimt, …, Pagume with its 5 or 6 days), monthly spending on Home, budgets, monthly summary notifications, people insights, yearly income and every date picker.
 
 ## Google Drive setup
 
@@ -101,11 +107,11 @@ src/
                         notificationSettings, appLock, backup, spendingSummary, backgroundTasks, dataChanged
   store/                zustand stores (dataStore, settingsStore)
   navigation/           typed routes and navigation helpers
-  screens/              Home, Money, Budget, Shared, Accounts, AddCash, Loans, People, TransactionDetail, Settings…
+  screens/              Home, Money, Budget (+ Planning), Shared, Accounts, AddCash, Loans, People, TransactionDetail, Settings…
   theme/                colours, spacing
   utils/                pattern parser, sender matching, person matching, duplicate detection, Ethiopian calendar, periods, formatting
 tests/                  bun unit tests (SMS parsing, sender matching, person matching, calendar/periods,
-                        splits, split editor entries, cash pockets, unlabeled accounts, account ownership, people analytics, OAuth/PKCE)
+                        splits, split editor entries, cash pockets, unlabeled accounts, account ownership, people analytics, planning, OAuth/PKCE)
 ```
 
 ## Not ported (yet)

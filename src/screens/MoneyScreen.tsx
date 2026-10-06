@@ -16,6 +16,7 @@ import { spacing } from '../theme/colors';
 import { CASH_BANK_ID } from '../utils/cashConstants';
 import { formatRange, isInRange, type DateRange } from '../utils/dateRange';
 import { formatMonth, relativeDayLabel } from '../utils/format';
+import { isWithin, nextPeriodStart, periodEndInclusive, periodStart, previousPeriodStart } from '../utils/periodUtils';
 import { transactionIncomeAmount, transactionNetExpenseAmount } from '../utils/transactionAmounts';
 import { transactionTouchesCategory } from '../utils/transactionSplits';
 import { TrackedAccounts } from './AccountsScreens';
@@ -46,10 +47,12 @@ export function MoneyScreen() {
   const [rangeSheet, setRangeSheet] = useState(false);
   /** When set, replaces the month as the period shown. */
   const [range, setRange] = useState<DateRange | null>(null);
-  const [month, setMonth] = useState(() => {
-    const now = new Date();
-    return new Date(now.getFullYear(), now.getMonth(), 1);
-  });
+  /** Start of the month shown: a Gregorian month, or an Ethiopian one (30 days, Pagume 5–6). */
+  const [month, setMonth] = useState(() => periodStart(new Date(), 'monthly', calendar));
+  // Switching calendars moves to the month of that calendar containing the one shown.
+  useEffect(() => {
+    setMonth((m) => periodStart(m, 'monthly', calendar));
+  }, [calendar]);
 
   // Deep links from Home (e.g. "Details" on spending) override the current filters.
   useEffect(() => {
@@ -100,9 +103,9 @@ export function MoneyScreen() {
       transactions.filter((tx) => {
         const d = txDate(tx);
         if (range) return isInRange(d, range);
-        return !!d && d.getFullYear() === month.getFullYear() && d.getMonth() === month.getMonth();
+        return !!d && isWithin(d, month, periodEndInclusive(month, 'monthly', calendar));
       }),
-    [transactions, month, range],
+    [transactions, month, range, calendar],
   );
 
   const scoped = useMemo(
@@ -162,9 +165,9 @@ export function MoneyScreen() {
     setRefreshing(false);
   };
 
-  const shiftMonth = (delta: number) => setMonth((m) => new Date(m.getFullYear(), m.getMonth() + delta, 1));
-  const now = new Date();
-  const isCurrentMonth = month.getFullYear() === now.getFullYear() && month.getMonth() === now.getMonth();
+  const shiftMonth = (delta: number) =>
+    setMonth((m) => (delta < 0 ? previousPeriodStart(m, 'monthly', calendar) : nextPeriodStart(m, 'monthly', calendar)));
+  const isCurrentMonth = month.getTime() >= periodStart(new Date(), 'monthly', calendar).getTime();
 
   const header = (
     <View style={{ gap: spacing.md, paddingBottom: spacing.sm }}>
@@ -180,7 +183,7 @@ export function MoneyScreen() {
         <View style={styles.monthRow}>
           <IconButton name="chevron-left" onPress={() => shiftMonth(-1)} accessibilityLabel="Previous month" />
           <Text style={[styles.monthLabel, { color: colors.text }]} onPress={() => setRangeSheet(true)}>
-            {formatMonth(month)}
+            {formatMonth(month, calendar)}
           </Text>
           <IconButton
             name="chevron-right"
@@ -298,7 +301,7 @@ export function MoneyScreen() {
             message={
               query || categoryFilter !== null || bankId !== null
                 ? 'Try clearing the filters.'
-                : `Nothing recorded in ${range ? formatRange(range, calendar) : formatMonth(month)}.`
+                : `Nothing recorded in ${range ? formatRange(range, calendar) : formatMonth(month, calendar)}.`
             }
           />
         }
@@ -347,7 +350,7 @@ export function MoneyScreen() {
       <Sheet visible={categorySheet} onClose={() => setCategorySheet(false)} title="Filter">
         <ListRow
           title="Date range"
-          subtitle={range ? formatRange(range, calendar) : `Whole month · ${formatMonth(month)}`}
+          subtitle={range ? formatRange(range, calendar) : `Whole month · ${formatMonth(month, calendar)}`}
           icon="date-range"
           chevron
           onPress={() => {

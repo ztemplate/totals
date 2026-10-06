@@ -8,6 +8,7 @@ import { budgetFromDb, budgetSelectedCategoryIds, budgetToDb, type Budget } from
 import { categoryFromDb, isManagedCategory, normalizeFlow, type Category } from '../models/category';
 import { loanDebtEntryFromDb, loanDebtRepaymentFromDb, type LoanDebtEntry } from '../models/loanDebt';
 import { personAccountKindFromStorage, personTypeFromStorage } from '../models/person';
+import { assetFromDb, incomeSourceFromDb, opportunityFromDb, plannedItemFromDb } from '../models/planning';
 import { splitFromDb, splitLoanReference, SPLIT_LOAN_SEPARATOR } from '../models/split';
 import { smsPatternFromJson } from '../models/smsPattern';
 import { selectedCategoryIds, transactionFromJson, transactionToJson, type Transaction } from '../models/transaction';
@@ -20,6 +21,12 @@ import { failedParseRepository } from '../repositories/failedParseRepository';
 import { loanDebtRepository, type LoanDebtRepaymentAllocation } from '../repositories/loanDebtRepository';
 import { peopleGroupRepository } from '../repositories/peopleGroupRepository';
 import { peopleRepository } from '../repositories/peopleRepository';
+import {
+  assetRepository,
+  incomeSourceRepository,
+  opportunityRepository,
+  plannedItemRepository,
+} from '../repositories/planningRepository';
 import { reimbursementRepository, type ReimbursementAllocationDraft } from '../repositories/reimbursementRepository';
 import { sourceSmsRepository } from '../repositories/sourceSmsRepository';
 import { splitRepository } from '../repositories/splitRepository';
@@ -32,9 +39,10 @@ import { smsConfigService } from './smsConfigService';
 /**
  * v11 matches DataExportImportService.currentSchemaVersion in the Flutter app. v12 adds transaction
  * splits, cash-to-withdrawal links and person type/telegram; v13 adds people groups and person
- * email/address. Older readers ignore the extra keys.
+ * email/address; v14 adds planned spending, expected income, assets and ways to earn. Older readers
+ * ignore the extra keys.
  */
-export const BACKUP_SCHEMA_VERSION = 13;
+export const BACKUP_SCHEMA_VERSION = 14;
 const MINIMUM_SCHEMA_VERSION = 1;
 
 type Json = Record<string, any>;
@@ -150,6 +158,13 @@ export async function buildExportJson(): Promise<string> {
     cashLinkRepository.getAll(),
     peopleGroupRepository.getAllGroups(),
   ]);
+  const [plannedItems, incomeSources, assets, moneyOpportunities] = await Promise.all([
+    plannedItemRepository.getAll(),
+    incomeSourceRepository.getAll(),
+    assetRepository.getAll(),
+    opportunityRepository.getAll(),
+  ]);
+  const withoutProfile = <T extends { profileId?: number | null }>(rows: T[]) => rows.map(({ profileId: _, ...rest }) => rest);
 
   return JSON.stringify({
     schemaVersion: BACKUP_SCHEMA_VERSION,
@@ -174,6 +189,10 @@ export async function buildExportJson(): Promise<string> {
     peopleGroups: peopleGroups.map((g) => ({ id: g.id, name: g.name, memberIds: g.memberIds, createdAt: g.createdAt })),
     transactionSplits,
     cashSpendLinks,
+    plannedItems: withoutProfile(plannedItems),
+    incomeSources: withoutProfile(incomeSources),
+    assets: withoutProfile(assets),
+    moneyOpportunities: withoutProfile(moneyOpportunities),
   });
 }
 
@@ -636,6 +655,40 @@ async function importPeopleGroups(data: Json, personIdMap: Map<number, number>):
 }
 
 /**
+ * Adds planned items, expected income, assets and ways to earn. A row whose name already exists in
+ * the same list is skipped, so importing the same backup twice doesn't double anything.
+ */
+async function importPlanning(data: Json): Promise<void> {
+  const lists: {
+    key: string;
+    alias: string;
+    repo: { getAll(): Promise<{ name: string }[]>; create(draft: any): Promise<number> };
+    fromJson: (json: Json) => { name: string };
+  }[] = [
+    { key: 'plannedItems', alias: 'planned_items', repo: plannedItemRepository, fromJson: plannedItemFromDb },
+    { key: 'incomeSources', alias: 'income_sources', repo: incomeSourceRepository, fromJson: incomeSourceFromDb },
+    { key: 'assets', alias: 'assets', repo: assetRepository, fromJson: assetFromDb },
+    { key: 'moneyOpportunities', alias: 'money_opportunities', repo: opportunityRepository, fromJson: opportunityFromDb },
+  ];
+  for (const list of lists) {
+    const raw = asList(data, list.key, [list.alias]);
+    if (raw.length === 0) continue;
+    const names = new Set((await list.repo.getAll()).map((row) => row.name.trim().toLowerCase()));
+    for (const json of raw) {
+      const { id: _id, profileId: _p, createdAt: _c, updatedAt: _u, ...draft } = list.fromJson(json) as Json;
+      const key = String(draft.name ?? '').trim().toLowerCase();
+      if (!key || names.has(key)) continue;
+      try {
+        await list.repo.create(draft);
+        names.add(key);
+      } catch (error) {
+        if (__DEV__) console.warn(`debug: Skipped ${list.key} row during import`, error);
+      }
+    }
+  }
+}
+
+/**
  * Restores split parts for transactions that have none locally (local splits win). Returns the
  * mapping for the split loan entries, whose references embed the split id.
  */
@@ -789,6 +842,7 @@ export async function importBackupJson(jsonData: string): Promise<ImportSummary>
   await importAutoCategorization(data, idMap, canMap);
   await importFailedParses(data);
   await importSmsPatterns(data);
+  await importPlanning(data);
 
   dataChanged.notify();
   return { accounts, transactions, budgets, categories };

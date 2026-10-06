@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react';
 import { Alert, RefreshControl, Text, View } from 'react-native';
+import { DateField } from '../components/dateRange';
 import { confirm, showError } from '../components/dialogs';
 import { AmountText, counterpartyOf, sortByTimeDesc } from '../components/finance';
 import {
@@ -384,7 +385,7 @@ function ExpenseFormSheet(props: {
     }
     const parsedDate = parseDateInput(date);
     if (!parsedDate) {
-      Alert.alert('Invalid date', 'Use the YYYY-MM-DD format.');
+      Alert.alert('Date required', 'Pick the day of the expense.');
       return;
     }
     if (!splits || Object.keys(splits).length === 0) {
@@ -450,7 +451,7 @@ function ExpenseFormSheet(props: {
           placeholder="0.00"
           style={{ fontSize: 20, fontWeight: '700' }}
         />
-        <TextField label="Date" value={date} onChangeText={setDate} placeholder="YYYY-MM-DD" />
+        <DateField label="Date" value={parseDateInput(date)} onChange={(d) => setDate(d ? toDateInput(d) : '')} placeholder="Pick a date" />
 
         <Text style={{ color: colors.textSecondary, fontWeight: '600', fontSize: 13 }}>Paid by</Text>
         <View style={ui.rowWrap}>

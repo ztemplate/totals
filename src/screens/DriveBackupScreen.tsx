@@ -20,7 +20,7 @@ import {
   type DriveBackupFile,
   type DriveBackupState,
 } from '../services/driveSync';
-import { useTheme } from '../store/settingsStore';
+import { useSettings, useTheme } from '../store/settingsStore';
 import { spacing } from '../theme/colors';
 import { formatDateTime } from '../utils/format';
 
@@ -40,6 +40,7 @@ function formatSize(bytes: number): string {
 
 export function DriveBackupScreen() {
   const colors = useTheme();
+  const calendar = useSettings((s) => s.calendar);
   const [state, setState] = useState<DriveBackupState | null>(null);
   const [clientId, setClientId] = useState('');
   const [backups, setBackups] = useState<DriveBackupFile[] | null>(null);
@@ -127,7 +128,7 @@ export function DriveBackupScreen() {
   const restore = async (file: DriveBackupFile) => {
     const ok = await confirm(
       'Restore backup',
-      `Data from the backup of ${file.createdTime ? formatDateTime(new Date(file.createdTime)) : file.name} is added to what you already have. Existing transactions are kept and duplicates are skipped.`,
+      `Data from the backup of ${file.createdTime ? formatDateTime(new Date(file.createdTime), calendar) : file.name} is added to what you already have. Existing transactions are kept and duplicates are skipped.`,
       'Restore',
     );
     if (!ok) return;
@@ -163,7 +164,7 @@ export function DriveBackupScreen() {
             <ListRow
               title={state.email ?? 'Connected'}
               subtitle={
-                state.lastBackupAt ? `Last backup ${formatDateTime(new Date(state.lastBackupAt))}` : 'No backup yet'
+                state.lastBackupAt ? `Last backup ${formatDateTime(new Date(state.lastBackupAt), calendar)}` : 'No backup yet'
               }
               icon="cloud-done"
             />
@@ -219,7 +220,7 @@ export function DriveBackupScreen() {
               <View key={file.id}>
                 {index > 0 ? <Divider /> : null}
                 <ListRow
-                  title={file.createdTime ? formatDateTime(new Date(file.createdTime)) : file.name}
+                  title={file.createdTime ? formatDateTime(new Date(file.createdTime), calendar) : file.name}
                   subtitle={`${formatSize(file.size)} · schema v${file.schemaVersion || '?'} · tap to restore, hold to delete`}
                   icon="restore"
                   disabled={busy !== null}

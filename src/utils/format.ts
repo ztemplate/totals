@@ -1,4 +1,4 @@
-import { formatEthiopian } from './ethiopianCalendar';
+import { ethiopianMonthLabel, formatEthiopian } from './ethiopianCalendar';
 
 const MONTHS_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
@@ -45,7 +45,9 @@ export function formatDateTime(date: Date, calendar: 'gregorian' | 'ethiopian' =
   return `${formatDate(date, calendar)} · ${formatTime(date)}`;
 }
 
-export function formatMonth(date: Date): string {
+/** "Oct 2026", or "Meskerem 2019" on the Ethiopian calendar. */
+export function formatMonth(date: Date, calendar: 'gregorian' | 'ethiopian' = 'gregorian'): string {
+  if (calendar === 'ethiopian') return ethiopianMonthLabel(date);
   return `${MONTHS_SHORT[date.getMonth()]} ${date.getFullYear()}`;
 }
 

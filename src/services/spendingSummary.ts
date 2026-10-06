@@ -9,7 +9,7 @@ import { reimbursementRepository } from '../repositories/reimbursementRepository
 import { transactionRepository } from '../repositories/transactionRepository';
 import { CASH_ATM_REFERENCE_PREFIX, CASH_BANK_ID } from '../utils/cashConstants';
 import { findOwnedAccountTransferMatches } from '../utils/ownedAccountTransfer';
-import { addDays, endOfDay, startOfDay, startOfWeek } from '../utils/periodUtils';
+import { addDays, endOfDay, periodStart, startOfDay, startOfWeek, type CalendarKind } from '../utils/periodUtils';
 import { transactionFeeAmount, transactionNetExpenseAmount } from '../utils/transactionAmounts';
 
 /** ATM withdrawals mirrored into the cash wallet: both sides are internal movement. */
@@ -109,7 +109,8 @@ export const spendingSummary = {
     return getSpendingForRange(addDays(currentWeekStart, -7), endOfDay(addDays(currentWeekStart, -1)));
   },
 
-  getCurrentMonthSpending(now = new Date()): Promise<number> {
-    return getSpendingForRange(new Date(now.getFullYear(), now.getMonth(), 1), endOfDay(now));
+  /** Spending since the start of the month on the given calendar (Gregorian or Ethiopian). */
+  getCurrentMonthSpending(now = new Date(), calendar: CalendarKind = 'gregorian'): Promise<number> {
+    return getSpendingForRange(periodStart(now, 'monthly', calendar), endOfDay(now));
   },
 };

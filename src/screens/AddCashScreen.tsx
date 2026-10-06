@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Alert, Text, View } from 'react-native';
 import { showError } from '../components/dialogs';
+import { DateField } from '../components/dateRange';
 import { PickWithdrawalSheet } from '../components/splits';
 import { Button, Card, Chip, ListRow, Screen, SectionTitle, SegmentedControl, TextField, styles as ui } from '../components/ui';
 import { isManagedCategory } from '../models/category';
@@ -39,7 +40,6 @@ export function AddCashScreen({ route, navigation }: StackScreenProps<'AddCash'>
   const parsedAmount = parseAmountInput(amount);
   const amountError = amount.trim() && (parsedAmount === null || parsedAmount <= 0) ? 'Enter a positive amount' : null;
   const parsedDate = parseDateInput(date);
-  const dateError = date.trim() && !parsedDate ? 'Use YYYY-MM-DD' : null;
 
   const switchType = (next: CashType) => {
     setType(next);
@@ -55,7 +55,7 @@ export function AddCashScreen({ route, navigation }: StackScreenProps<'AddCash'>
       return;
     }
     if (!parsedDate) {
-      Alert.alert('Invalid date', 'Use the YYYY-MM-DD format.');
+      Alert.alert('Date required', 'Pick the day of the transaction.');
       return;
     }
     const now = new Date();
@@ -125,7 +125,7 @@ export function AddCashScreen({ route, navigation }: StackScreenProps<'AddCash'>
           placeholder={type === 'DEBIT' ? 'Shop, person…' : 'Person, employer…'}
           autoCapitalize="words"
         />
-        <TextField label="Date" value={date} onChangeText={setDate} placeholder="YYYY-MM-DD" error={dateError} />
+        <DateField label="Date" value={parsedDate} onChange={(d) => setDate(d ? toDateInput(d) : '')} placeholder="Pick a date" />
         <View style={ui.rowWrap}>
           <Chip label="Today" selected={date === toDateInput(today)} onPress={() => setDate(toDateInput(today))} />
           <Chip

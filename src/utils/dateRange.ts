@@ -1,5 +1,5 @@
 /** Date ranges for filtering, and the month grid of the range picker. Calendar aware, pure. */
-import { ethiopianMonthLabel, toEthiopian } from './ethiopianCalendar';
+import { toEthiopian } from './ethiopianCalendar';
 import { formatDate, formatMonth } from './format';
 import { addDays, endOfDay, nextPeriodStart, periodStart, startOfDay, type CalendarKind } from './periodUtils';
 
@@ -90,7 +90,7 @@ export function monthGrid(anchor: Date, calendar: CalendarKind = 'gregorian'): M
   while (cells.length % 7 !== 0) cells.push(null);
   const weeks: (Date | null)[][] = [];
   for (let i = 0; i < cells.length; i += 7) weeks.push(cells.slice(i, i + 7));
-  return { label: calendar === 'ethiopian' ? ethiopianMonthLabel(start) : formatMonth(start), start, next, weeks };
+  return { label: formatMonth(start, calendar), start, next, weeks };
 }
 
 export function dayOfMonth(date: Date, calendar: CalendarKind = 'gregorian'): number {

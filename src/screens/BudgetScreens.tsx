@@ -37,8 +37,9 @@ import { useSettings, useTheme } from '../store/settingsStore';
 import { spacing } from '../theme/colors';
 import { formatDate, formatMoney, parseAmountInput } from '../utils/format';
 import { periodStart } from '../utils/periodUtils';
+import { IncomeView, PlannedSpendingView } from './PlanningScreens';
 
-type BudgetView = 'main' | 'categories';
+type BudgetView = 'main' | 'categories' | 'planned' | 'income';
 type MainPeriod = 'daily' | 'monthly' | 'yearly';
 
 const PERIOD_OPTIONS: { value: MainPeriod; label: string }[] = [
@@ -64,20 +65,27 @@ export function BudgetScreen() {
   const [inactive, setInactive] = useState<Budget[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
+  // Bumped by the header + button on the Planned and Income tabs, which open their own add sheets.
+  const [addRequest, setAddRequest] = useState(0);
+  const planning = view === 'planned' || view === 'income';
 
   useLayoutEffect(() => {
     navigation.setOptions({
       headerRight: () => (
         <IconButton
           name="add"
-          accessibilityLabel="Add budget"
-          onPress={() => navigation.navigate('BudgetEdit', undefined)}
+          accessibilityLabel={view === 'planned' ? 'Add planned item' : view === 'income' ? 'Add' : 'Add budget'}
+          onPress={() => (planning ? setAddRequest((n) => n + 1) : navigation.navigate('BudgetEdit', undefined))}
         />
       ),
     });
-  }, [navigation]);
+  }, [navigation, view, planning]);
 
   useEffect(() => {
+    if (planning) {
+      setRefreshing(false);
+      return;
+    }
     let cancelled = false;
     const load = async () => {
       const [loaded, all] = await Promise.all([
@@ -103,7 +111,7 @@ export function BudgetScreen() {
     return () => {
       cancelled = true;
     };
-  }, [view, period, calendar, version, reloadKey]);
+  }, [view, planning, period, calendar, version, reloadKey]);
 
   const summary = useMemo(() => {
     let budgeted = 0;
@@ -150,95 +158,103 @@ export function BudgetScreen() {
     >
       <SegmentedControl<BudgetView>
         options={[
-          { value: 'main', label: 'Main budgets' },
+          { value: 'main', label: 'Budgets' },
           { value: 'categories', label: 'Categories' },
+          { value: 'planned', label: 'Planned' },
+          { value: 'income', label: 'Income' },
         ]}
         value={view}
         onChange={setView}
       />
-      {view === 'main' ? (
-        <View style={ui.rowWrap}>
-          {PERIOD_OPTIONS.map((p) => (
-            <Chip key={p.value} label={p.label} selected={period === p.value} onPress={() => setPeriod(p.value)} />
-          ))}
-        </View>
-      ) : null}
-
-      {statuses && statuses.length > 0 ? (
-        <Card style={{ gap: spacing.sm }}>
-          <Text style={{ color: colors.textSecondary, fontSize: 12 }}>
-            {view === 'main' ? `${PERIOD_OPTIONS.find((p) => p.value === period)!.label} overview` : 'Category budgets'}
-          </Text>
-          <View style={[ui.rowCenter, { justifyContent: 'space-between' }]}>
-            <View style={{ gap: 2 }}>
-              <Text style={{ color: colors.textMuted, fontSize: 12 }}>Spent</Text>
-              <AmountText value={summary.spent} style={{ fontSize: 20, fontWeight: '700' }} />
-            </View>
-            <View style={{ gap: 2, alignItems: 'flex-end' }}>
-              <Text style={{ color: colors.textMuted, fontSize: 12 }}>of budget</Text>
-              <AmountText value={summary.budgeted} color={colors.textSecondary} style={{ fontSize: 16, fontWeight: '600' }} />
-            </View>
-          </View>
-          <ProgressBar progress={Math.min(1, overallProgress)} color={overallColor} />
-          <Text style={{ color: summary.remaining < 0 ? colors.expense : colors.textSecondary, fontSize: 12 }}>
-            {summary.remaining < 0
-              ? `Over budget by ${formatMoney(-summary.remaining)}`
-              : `${formatMoney(summary.remaining)} left`}
-          </Text>
-        </Card>
-      ) : null}
-
-      {statuses === null ? (
-        <Text style={{ color: colors.textSecondary }}>Loading…</Text>
-      ) : statuses.length === 0 ? (
-        <EmptyState
-          icon="savings"
-          title={view === 'main' ? `No ${period} budget` : 'No category budgets'}
-          message={
-            view === 'main'
-              ? 'Set a spending limit for this period and Totals will track your expenses against it.'
-              : 'Limit spending on specific categories like food or transport.'
-          }
-          action={{ label: 'Create budget', onPress: openNew }}
-        />
-      ) : (
+      {view === 'planned' ? <PlannedSpendingView addRequest={addRequest} /> : null}
+      {view === 'income' ? <IncomeView addRequest={addRequest} /> : null}
+      {planning ? null : (
         <>
-          <SectionTitle title="Active" />
-          {statuses.map((status) => (
-            <BudgetCard
-              key={status.budget.id ?? status.budget.name}
-              status={status}
-              calendar={calendar}
-              categories={budgetSelectedCategoryIds(status.budget)
-                .map((id) => categoryById.get(id))
-                .filter((c): c is Category => !!c)}
-              onPress={() => openBudget(status.budget)}
+          {view === 'main' ? (
+            <View style={ui.rowWrap}>
+              {PERIOD_OPTIONS.map((p) => (
+                <Chip key={p.value} label={p.label} selected={period === p.value} onPress={() => setPeriod(p.value)} />
+              ))}
+            </View>
+          ) : null}
+
+          {statuses && statuses.length > 0 ? (
+            <Card style={{ gap: spacing.sm }}>
+              <Text style={{ color: colors.textSecondary, fontSize: 12 }}>
+                {view === 'main' ? `${PERIOD_OPTIONS.find((p) => p.value === period)!.label} overview` : 'Category budgets'}
+              </Text>
+              <View style={[ui.rowCenter, { justifyContent: 'space-between' }]}>
+                <View style={{ gap: 2 }}>
+                  <Text style={{ color: colors.textMuted, fontSize: 12 }}>Spent</Text>
+                  <AmountText value={summary.spent} style={{ fontSize: 20, fontWeight: '700' }} />
+                </View>
+                <View style={{ gap: 2, alignItems: 'flex-end' }}>
+                  <Text style={{ color: colors.textMuted, fontSize: 12 }}>of budget</Text>
+                  <AmountText value={summary.budgeted} color={colors.textSecondary} style={{ fontSize: 16, fontWeight: '600' }} />
+                </View>
+              </View>
+              <ProgressBar progress={Math.min(1, overallProgress)} color={overallColor} />
+              <Text style={{ color: summary.remaining < 0 ? colors.expense : colors.textSecondary, fontSize: 12 }}>
+                {summary.remaining < 0
+                  ? `Over budget by ${formatMoney(-summary.remaining)}`
+                  : `${formatMoney(summary.remaining)} left`}
+              </Text>
+            </Card>
+          ) : null}
+
+          {statuses === null ? (
+            <Text style={{ color: colors.textSecondary }}>Loading…</Text>
+          ) : statuses.length === 0 ? (
+            <EmptyState
+              icon="savings"
+              title={view === 'main' ? `No ${period} budget` : 'No category budgets'}
+              message={
+                view === 'main'
+                  ? 'Set a spending limit for this period and Totals will track your expenses against it.'
+                  : 'Limit spending on specific categories like food or transport.'
+              }
+              action={{ label: 'Create budget', onPress: openNew }}
             />
-          ))}
+          ) : (
+            <>
+              <SectionTitle title="Active" />
+              {statuses.map((status) => (
+                <BudgetCard
+                  key={status.budget.id ?? status.budget.name}
+                  status={status}
+                  calendar={calendar}
+                  categories={budgetSelectedCategoryIds(status.budget)
+                    .map((id) => categoryById.get(id))
+                    .filter((c): c is Category => !!c)}
+                  onPress={() => openBudget(status.budget)}
+                />
+              ))}
+            </>
+          )}
+
+          {inactive.length > 0 ? (
+            <>
+              <SectionTitle title="Paused" />
+              <Card>
+                {inactive.map((budget) => (
+                  <ListRow
+                    key={budget.id ?? budget.name}
+                    icon="pause-circle-outline"
+                    title={budget.name}
+                    subtitle={`${budgetFrameLabel(budget)} · ${formatMoney(budget.amount)}`}
+                    onPress={() => openBudget(budget)}
+                    right={<Button title="Resume" compact variant="secondary" onPress={() => void reactivate(budget)} />}
+                  />
+                ))}
+              </Card>
+            </>
+          ) : null}
+
+          {statuses && statuses.length > 0 ? (
+            <Button title="Add budget" variant="secondary" icon="add" onPress={openNew} />
+          ) : null}
         </>
       )}
-
-      {inactive.length > 0 ? (
-        <>
-          <SectionTitle title="Paused" />
-          <Card>
-            {inactive.map((budget) => (
-              <ListRow
-                key={budget.id ?? budget.name}
-                icon="pause-circle-outline"
-                title={budget.name}
-                subtitle={`${budgetFrameLabel(budget)} · ${formatMoney(budget.amount)}`}
-                onPress={() => openBudget(budget)}
-                right={<Button title="Resume" compact variant="secondary" onPress={() => void reactivate(budget)} />}
-              />
-            ))}
-          </Card>
-        </>
-      ) : null}
-
-      {statuses && statuses.length > 0 ? (
-        <Button title="Add budget" variant="secondary" icon="add" onPress={openNew} />
-      ) : null}
     </Screen>
   );
 }

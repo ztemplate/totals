@@ -3,7 +3,7 @@ import { BUILT_IN_CATEGORIES } from '../models/category';
 import { BUNDLED_BANKS } from '../data/banks';
 
 export const DB_NAME = 'totals.db';
-export const SCHEMA_VERSION = 36;
+export const SCHEMA_VERSION = 37;
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS categories (
@@ -370,6 +370,57 @@ CREATE TABLE IF NOT EXISTS people_group_members (
   personId INTEGER NOT NULL,
   PRIMARY KEY (groupId, personId)
 );
+
+CREATE TABLE IF NOT EXISTS planned_items (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  price REAL NOT NULL DEFAULT 0,
+  priority TEXT NOT NULL DEFAULT 'need',
+  neededBy TEXT,
+  saved REAL NOT NULL DEFAULT 0,
+  note TEXT,
+  bought INTEGER NOT NULL DEFAULT 0,
+  boughtAt TEXT,
+  profileId INTEGER,
+  createdAt TEXT NOT NULL,
+  updatedAt TEXT
+);
+CREATE TABLE IF NOT EXISTS income_sources (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  amount REAL NOT NULL DEFAULT 0,
+  frequency TEXT NOT NULL DEFAULT 'monthly',
+  startDate TEXT NOT NULL,
+  endDate TEXT,
+  certainty TEXT NOT NULL DEFAULT 'certain',
+  note TEXT,
+  profileId INTEGER,
+  createdAt TEXT NOT NULL,
+  updatedAt TEXT
+);
+CREATE TABLE IF NOT EXISTS assets (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  value REAL NOT NULL DEFAULT 0,
+  liquidity TEXT NOT NULL DEFAULT 'weeks',
+  note TEXT,
+  profileId INTEGER,
+  createdAt TEXT NOT NULL,
+  updatedAt TEXT
+);
+CREATE TABLE IF NOT EXISTS money_opportunities (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  reward REAL NOT NULL DEFAULT 0,
+  hours REAL NOT NULL DEFAULT 1,
+  strain INTEGER NOT NULL DEFAULT 3,
+  chance REAL NOT NULL DEFAULT 50,
+  note TEXT,
+  done INTEGER NOT NULL DEFAULT 0,
+  profileId INTEGER,
+  createdAt TEXT NOT NULL,
+  updatedAt TEXT
+);
 `;
 
 /** Columns added after a table was first created. CREATE TABLE IF NOT EXISTS won't add them to old installs. */
@@ -484,6 +535,10 @@ export async function resetDatabase(): Promise<void> {
       'cash_spend_links',
       'people_groups',
       'people_group_members',
+      'planned_items',
+      'income_sources',
+      'assets',
+      'money_opportunities',
     ]) {
       await db.runAsync(`DELETE FROM ${table}`);
     }

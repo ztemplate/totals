@@ -1465,7 +1465,7 @@ export function NotificationSettingsScreen() {
           break;
         case 'monthly':
           shown = await notificationService.showMonthlySpendingSummary({
-            amount: await spendingSummary.getCurrentMonthSpending(),
+            amount: await spendingSummary.getCurrentMonthSpending(new Date(), useSettings.getState().calendar),
             ignoreEnabledCheck: true,
             test: true,
           });

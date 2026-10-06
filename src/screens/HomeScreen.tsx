@@ -11,6 +11,7 @@ import { useData } from '../store/dataStore';
 import { useSettings, useTheme } from '../store/settingsStore';
 import { radius, spacing } from '../theme/colors';
 import { accountDisplayBalance, totalBalance } from '../utils/balances';
+import { ETHIOPIAN_MONTHS, toEthiopian } from '../utils/ethiopianCalendar';
 import { maskAccountNumber } from '../utils/format';
 
 interface SpendingSnapshot {
@@ -24,6 +25,7 @@ export function HomeScreen() {
   const navigation = useAppNavigation();
   const { transactions, accounts, banksWithCash, version, profiles, activeProfileId } = useData();
   const hideBalances = useSettings((s) => s.hideBalances);
+  const calendar = useSettings((s) => s.calendar);
   const toggleHideBalances = useSettings((s) => s.toggleHideBalances);
   const [spending, setSpending] = useState<SpendingSnapshot | null>(null);
   const [syncing, setSyncing] = useState(false);
@@ -33,7 +35,7 @@ export function HomeScreen() {
     void Promise.all([
       spendingSummary.getTodaySpending(),
       spendingSummary.getCurrentWeekSpending(),
-      spendingSummary.getCurrentMonthSpending(),
+      spendingSummary.getCurrentMonthSpending(new Date(), calendar),
     ])
       .then(([today, week, month]) => {
         if (!cancelled) setSpending({ today, week, month });
@@ -44,7 +46,7 @@ export function HomeScreen() {
     return () => {
       cancelled = true;
     };
-  }, [version]);
+  }, [version, calendar]);
 
   const visibleAccounts = useMemo(
     () => [...accounts].sort((a, b) => Number(a.isDormant) - Number(b.isDormant)),
@@ -107,7 +109,7 @@ export function HomeScreen() {
       <View style={styles.spendingRow}>
         <SpendingTile label="Today" value={spending?.today} />
         <SpendingTile label="This week" value={spending?.week} />
-        <SpendingTile label="This month" value={spending?.month} />
+        <SpendingTile label={calendar === 'ethiopian' ? ETHIOPIAN_MONTHS[toEthiopian(new Date()).month - 1] : 'This month'} value={spending?.month} />
       </View>
 
       <SectionTitle title="Accounts" action={{ label: 'Manage', onPress: () => navigation.navigate('Accounts') }} />

@@ -2,11 +2,12 @@ import * as BackgroundTask from 'expo-background-task';
 import * as Notifications from 'expo-notifications';
 import * as TaskManager from 'expo-task-manager';
 import { Platform } from 'react-native';
-import { addDays, sameDay, startOfWeek } from '../utils/periodUtils';
+import { addDays, nextPeriodStart, periodStart, sameDay, startOfWeek, type CalendarKind } from '../utils/periodUtils';
 import { checkAndNotifyBudgetAlerts } from './budgetAlert';
 import { runScheduledDriveBackup } from './driveSync';
 import { handleNotificationResponse, notificationService } from './notifications';
 import { notificationSettings, type TimeOfDay } from './notificationSettings';
+import { PrefKeys, prefs } from './prefs';
 import { registerSmsHeadlessTask, smsService } from './smsService';
 import { spendingSummary } from './spendingSummary';
 
@@ -22,8 +23,13 @@ export function isWeeklySummarySendDay(date: Date): boolean {
   return date.getDay() === 0;
 }
 
-export function isMonthlySummarySendDay(date: Date): boolean {
-  return addDays(date, 1).getDate() === 1;
+/** Last day of the month: Gregorian, or Ethiopian (day 30, or the last day of Pagume). */
+export function isMonthlySummarySendDay(date: Date, calendar: CalendarKind = 'gregorian'): boolean {
+  return sameDay(addDays(date, 1), nextPeriodStart(date, 'monthly', calendar));
+}
+
+async function storedCalendar(): Promise<CalendarKind> {
+  return (await prefs.getString(PrefKeys.calendar)) === 'ethiopian' ? 'ethiopian' : 'gregorian';
 }
 
 async function syncMissedBankSmsBestEffort(): Promise<void> {
@@ -58,11 +64,12 @@ async function sendSpendingSummariesIfDue(now: Date): Promise<void> {
     }
   }
 
-  if ((await notificationSettings.isMonthlySummaryEnabled()) && isMonthlySummarySendDay(now)) {
+  const calendar = await storedCalendar();
+  if ((await notificationSettings.isMonthlySummaryEnabled()) && isMonthlySummarySendDay(now, calendar)) {
     const lastSent = await notificationSettings.getMonthlySummaryLastSentAt();
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const monthStart = periodStart(now, 'monthly', calendar);
     if (!lastSent || lastSent.getTime() < monthStart.getTime()) {
-      const amount = await spendingSummary.getCurrentMonthSpending(now);
+      const amount = await spendingSummary.getCurrentMonthSpending(now, calendar);
       if (await notificationService.showMonthlySpendingSummary({ amount })) {
         await notificationSettings.setMonthlySummaryLastSentAt(now);
       }

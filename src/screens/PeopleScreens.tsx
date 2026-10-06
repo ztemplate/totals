@@ -36,6 +36,7 @@ import { spacing } from '../theme/colors';
 import { CASH_BANK_ID } from '../utils/cashConstants';
 import { formatDate, formatMoney, relativeDayLabel, titleCase } from '../utils/format';
 import { analyzePeople } from '../utils/peopleAnalytics';
+import { periodStart, previousPeriodStart, type CalendarKind } from '../utils/periodUtils';
 import {
   groupLoanItemsByPerson,
   groupTransactionsByPerson,
@@ -352,11 +353,14 @@ function PeopleGroups(props: { people: Person[]; navigation: AppNavigation }) {
 
 type InsightPeriod = 'month' | 'quarter' | 'year' | 'all';
 
-function periodStart(period: InsightPeriod): Date | null {
+/** Start of the insight period in the chosen calendar; "3 months" is this month and the two before. */
+function insightPeriodStart(period: InsightPeriod, calendar: CalendarKind): Date | null {
   const now = new Date();
-  if (period === 'month') return new Date(now.getFullYear(), now.getMonth(), 1);
-  if (period === 'quarter') return new Date(now.getFullYear(), now.getMonth() - 2, 1);
-  if (period === 'year') return new Date(now.getFullYear(), 0, 1);
+  if (period === 'month') return periodStart(now, 'monthly', calendar);
+  if (period === 'quarter') {
+    return previousPeriodStart(previousPeriodStart(now, 'monthly', calendar), 'monthly', calendar);
+  }
+  if (period === 'year') return periodStart(now, 'yearly', calendar);
   return null;
 }
 
@@ -369,6 +373,7 @@ function PeopleInsights(props: {
 }) {
   const colors = useTheme();
   const { selfTransferReferences } = useData();
+  const calendar = useSettings((s) => s.calendar);
   const [period, setPeriod] = useState<InsightPeriod>('quarter');
   const analytics = useMemo(
     () =>
@@ -376,10 +381,10 @@ function PeopleInsights(props: {
         people: props.people,
         byPerson: props.byPerson,
         loansByPerson: props.loansByPerson,
-        since: periodStart(period),
+        since: insightPeriodStart(period, calendar),
         exclude: selfTransferReferences,
       }),
-    [props.people, props.byPerson, props.loansByPerson, period, selfTransferReferences],
+    [props.people, props.byPerson, props.loansByPerson, period, selfTransferReferences, calendar],
   );
   const open = (personId: number) => props.navigation.navigate('PersonDetail', { personId });
   const maxType = Math.max(1, ...analytics.byType.map((t) => t.amount));

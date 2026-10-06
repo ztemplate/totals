@@ -3,6 +3,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { confirm, showError } from '../components/dialogs';
 import { AmountText, BankAvatar, CategoryIcon, counterpartyOf } from '../components/finance';
+import { DateField } from '../components/dateRange';
 import { PersonPickerSheet } from '../components/people';
 import { CashSourceSection, PocketSection, SplitEditorSheet, SplitSection, isCashSpend, pocketWithdrawalFor } from '../components/splits';
 import { Button, Card, Chip, Divider, EmptyState, Icon, ListRow, Loading, SectionTitle, Sheet, TextField, styles as ui } from '../components/ui';
@@ -42,6 +43,7 @@ import { atmWithdrawalReferences, isOpenableLink, withdrawalReferenceOf } from '
 import { addDays, parseDateInput, toDateInput } from '../utils/dates';
 import { formatDateTime, formatMoney, formatNumber, maskAccountNumber, parseAmountInput, titleCase } from '../utils/format';
 import { matchTransactionToPerson, type PeopleIndex } from '../utils/personMatching';
+import { addCalendarMonths } from '../utils/planning';
 import { transactionDebitOutflow, transactionFeeAmount } from '../utils/transactionAmounts';
 
 const EPSILON = 0.005;
@@ -737,6 +739,7 @@ function LoanPersonSheet(props: {
 }) {
   const colors = useTheme();
   const direction = loanDirectionFor(props.tx);
+  const calendar = useSettings((s) => s.calendar);
   const [name, setName] = useState('');
   const [returnDate, setReturnDate] = useState('');
   const [principal, setPrincipal] = useState('');
@@ -822,18 +825,17 @@ function LoanPersonSheet(props: {
           keyboardType="decimal-pad"
           error={principalError}
         />
-        <TextField
+        <DateField
           label="Expected return date (optional)"
-          value={returnDate}
-          onChangeText={setReturnDate}
-          placeholder="YYYY-MM-DD"
-          error={dateError}
+          value={parseDateInput(returnDate)}
+          onChange={(d) => setReturnDate(d ? toDateInput(d) : '')}
+          placeholder="No date"
+          clearable
         />
         <View style={ui.rowWrap}>
           <Chip label="1 week" onPress={() => setReturnDate(toDateInput(addDays(today, 7)))} />
           <Chip label="2 weeks" onPress={() => setReturnDate(toDateInput(addDays(today, 14)))} />
-          <Chip label="1 month" onPress={() => setReturnDate(toDateInput(new Date(today.getFullYear(), today.getMonth() + 1, today.getDate())))} />
-          <Chip label="No date" onPress={() => setReturnDate('')} />
+          <Chip label="1 month" onPress={() => setReturnDate(toDateInput(addCalendarMonths(today, 1, calendar)))} />
         </View>
         <Button title="Save" onPress={() => void save()} loading={saving} />
       </View>
