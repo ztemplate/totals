@@ -6,21 +6,23 @@ import {
   SMS_HEADLESS_TASK,
   type RawSms,
 } from '../../modules/sms-reader';
+import { getDb } from '../db/database';
 import type { Account } from '../models/account';
 import type { Bank } from '../models/bank';
-import { OwnerAssignment, transactionFromJson, type Transaction } from '../models/transaction';
+import type { TransactionSourceSms } from '../models/misc';
+import type { SmsPattern } from '../models/smsPattern';
+import { makeTransaction, OwnerAssignment, transactionFromJson, type Transaction } from '../models/transaction';
 import { accountRepository } from '../repositories/accountRepository';
 import { bankById, bankRepository } from '../repositories/bankRepository';
 import { categoryRepository } from '../repositories/categoryRepository';
 import { failedParseRepository } from '../repositories/failedParseRepository';
 import { profileRepository } from '../repositories/profileRepository';
-import { sourceSmsRepository } from '../repositories/sourceSmsRepository';
-import { transactionRepository } from '../repositories/transactionRepository';
-import { checkSmsOwnership, transactionBelongsToAccount, type SmsOwnership, type SmsOwnershipCheck } from '../utils/accountIdentity';
+import { transactionRepository, type TransactionOwnershipUpdate } from '../repositories/transactionRepository';
+import { checkSmsOwnership, type SmsOwnership, type SmsOwnershipCheck } from '../utils/accountIdentity';
 import { findBankForSender, normalizeSender, senderAddressMatchesBank } from '../utils/bankSenderMatcher';
 import { CASH_ACCOUNT_NUMBER, CASH_ATM_REFERENCE_PREFIX, CASH_BANK_ID } from '../utils/cashConstants';
-import { hasExactAmountAndBalanceDuplicate } from '../utils/duplicateDetector';
 import { parsePatternMessage } from '../utils/patternParser';
+import { TransactionIndex } from '../utils/smsScanIndex';
 import { transactionsToSuppress } from '../utils/selfTransfer';
 import {
   isTelebirrAirtimeReceipt,
@@ -28,6 +30,7 @@ import {
   looksLikeTransaction,
 } from '../utils/smsMessageClassifier';
 import { buildSmsSource, scopeReference, SMS_SOURCE_TYPE, sourceToJson } from '../utils/smsTransactionSource';
+import { autoCategorization, type AutoCategorizationSelection } from './autoCategorization';
 import { dataChanged } from './dataChanged';
 import { failedParseReviewService, NO_MATCHING_PATTERN_REASON } from './failedParseReview';
 import { notificationService } from './notifications';
@@ -41,6 +44,8 @@ export interface ParseResult {
   status: ParseStatus;
   transaction?: Transaction | null;
   reason?: string | null;
+  /** For duplicates: the stored transaction the message matched. */
+  existing?: Transaction | null;
 }
 
 export interface TodaySmsSyncResult {
@@ -70,8 +75,30 @@ const CANONICAL_INBOX_LOOKUP_DELAY_MS = 750;
 const CANONICAL_INBOX_LOOKUP_WINDOW_MS = 2 * 60 * 1000;
 const CANONICAL_INBOX_LOOKUP_FUTURE_SLACK_MS = 15 * 1000;
 
+/** Imports write in batches of about this many rows, each batch in one SQLite transaction. */
+const FLUSH_EVERY_WRITES = 400;
+/** Batch scans give the UI thread a turn this often (messages). */
+const YIELD_EVERY_MESSAGES = 50;
+/** Catch-up scans notify for new transactions whose message is at most this old. */
+const RECENT_NOTIFICATION_WINDOW_MS = 24 * 60 * 60 * 1000;
+/** Catch-up scans show at most this many individual notifications, then one summary. */
+const MAX_INDIVIDUAL_CATCHUP_NOTIFICATIONS = 5;
+
 /** Notifications are shown one at a time so self-transfer pairs can withdraw each other. */
 let notificationTurn: Promise<void> = Promise.resolve();
+
+/**
+ * SMS processing (live messages, scans, retries) runs one job at a time. A scan works on an
+ * in-memory snapshot of the transactions, so a live message handled in the middle of it
+ * would be invisible to the scan (and the scan to it). Running them in turn also lets the
+ * live listener see a row a scan just imported silently, and notify for it.
+ */
+let smsWorkChain: Promise<unknown> = Promise.resolve();
+function exclusive<T>(work: () => Promise<T>): Promise<T> {
+  const run = smsWorkChain.then(work);
+  smsWorkChain = run.catch(() => undefined);
+  return run;
+}
 
 interface ProcessOptions {
   messageDate?: Date | null;
@@ -84,6 +111,24 @@ interface ProcessOptions {
 }
 
 const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+const yieldToUi = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+/** Every bank sender code, normalized, for the native inbox prefilter. */
+function senderCodesFor(banks: Bank[]): string[] {
+  const codes = new Set<string>();
+  for (const bank of banks) {
+    for (const code of bank.codes) {
+      const normalized = normalizeSender(code);
+      if (normalized) codes.add(normalized);
+    }
+  }
+  return [...codes];
+}
+
+function sortChronological(messages: RawSms[]): RawSms[] {
+  // Oldest first, so the latest balance wins.
+  return [...messages].sort((a, b) => (a.date ?? 0) - (b.date ?? 0));
+}
 
 function startOfDay(date: Date): Date {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate());
@@ -209,9 +254,13 @@ async function findCanonicalInboxCopy(params: {
   banks: Bank[];
 }): Promise<RawSms | null> {
   const anchor = params.messageDate ?? new Date();
+  // Only the same sender or this bank's senders can score; let the native side drop the rest.
+  const sender = normalizeSender(params.senderAddress);
+  const senderCodes = sender ? [sender, ...senderCodesFor([params.bank])] : null;
   const messages = await getInbox(
     anchor.getTime() - CANONICAL_INBOX_LOOKUP_WINDOW_MS,
     Date.now() + CANONICAL_INBOX_LOOKUP_FUTURE_SLACK_MS,
+    { senderCodes },
   );
   let best: RawSms | null = null;
   let bestScore = -1;
@@ -232,6 +281,7 @@ async function findCanonicalInboxCopy(params: {
   return best;
 }
 
+/** Runs inside the SMS work lock (called from processInternal). */
 async function retryCanonicalInboxCopy(params: {
   originalBody: string;
   senderAddress: string;
@@ -253,7 +303,7 @@ async function retryCanonicalInboxCopy(params: {
     });
     if (!inbox?.body || !inbox.address) continue;
 
-    const result = await processInternal(inbox.body, inbox.address, {
+    const result = await processOneLocked(inbox.body, inbox.address, {
       messageDate: smsDate(inbox, params.messageDate ?? null),
       sourceMessageId: inbox.id ?? null,
       sourceSubscriptionId: normalizedSubscriptionId(inbox.subscriptionId),
@@ -267,6 +317,188 @@ async function retryCanonicalInboxCopy(params: {
   return null;
 }
 
+// ------------------------------------------------------------------ scan context
+
+interface PendingWrites {
+  transactions: Transaction[];
+  ownershipUpdates: TransactionOwnershipUpdate[];
+  sourceSms: TransactionSourceSms[];
+  /** Last balance per account; later messages overwrite earlier ones, like the sequential updates did. */
+  balances: Map<string, { accountNumber: string; bank: number; balance: number }>;
+}
+
+interface AddedSmsTransaction {
+  transaction: Transaction;
+  messageDate: Date | null;
+}
+
+/**
+ * Everything processInternal needs, loaded once per scan (or once per live message): banks,
+ * patterns by bank, accounts, and an index over the stored transactions. Writes are buffered
+ * and flushed in batches; the in-memory view is updated as rows are added or re-owned, so
+ * later messages in the same scan see earlier ones exactly as if they had been re-read.
+ */
+interface ScanContext {
+  banks: Bank[];
+  patternsByBank: Map<number, SmsPattern[]>;
+  accounts: Account[];
+  index: TransactionIndex;
+  atmCutoff: Date;
+  pending: PendingWrites;
+  /** SMS transactions added (not their ATM cash mirrors), in processing order. */
+  added: AddedSmsTransaction[];
+  addedDebit: boolean;
+  categorization: Map<string, Promise<AutoCategorizationSelection | null>>;
+}
+
+function emptyPendingWrites(): PendingWrites {
+  return { transactions: [], ownershipUpdates: [], sourceSms: [], balances: new Map() };
+}
+
+function pendingWriteCount(pending: PendingWrites): number {
+  return pending.transactions.length + pending.ownershipUpdates.length + pending.sourceSms.length + pending.balances.size;
+}
+
+async function createScanContext(): Promise<ScanContext> {
+  // First, since resolving the cutoff the first time may delete stale ATM cash rows.
+  const atmCutoff = await getAtmCashTransferCutoff();
+  const [banks, patterns, accounts, transactions] = await Promise.all([
+    bankRepository.getBanks(),
+    smsConfigService.getPatterns({ allowRemoteFetch: false }),
+    accountRepository.getAccounts(),
+    transactionRepository.getTransactions(),
+  ]);
+  const patternsByBank = new Map<number, SmsPattern[]>();
+  for (const pattern of patterns) {
+    const list = patternsByBank.get(pattern.bankId);
+    if (list) list.push(pattern);
+    else patternsByBank.set(pattern.bankId, [pattern]);
+  }
+  return {
+    banks,
+    patternsByBank,
+    accounts,
+    index: new TransactionIndex(transactions),
+    atmCutoff,
+    pending: emptyPendingWrites(),
+    added: [],
+    addedDebit: false,
+    categorization: new Map(),
+  };
+}
+
+/** Writes the buffered rows in one transaction (retried, since every write is idempotent). */
+async function flushPendingWrites(ctx: ScanContext): Promise<void> {
+  const pending = ctx.pending;
+  if (pendingWriteCount(pending) === 0) return;
+  ctx.pending = emptyPendingWrites();
+  let lastError: unknown = null;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      await transactionRepository.saveSmsImportBatch({
+        transactions: pending.transactions,
+        ownershipUpdates: pending.ownershipUpdates,
+        sourceSms: pending.sourceSms,
+      });
+      lastError = null;
+      break;
+    } catch (error) {
+      // Typically another transaction was open on the shared connection; try again shortly.
+      lastError = error;
+      await delay(100 * (attempt + 1));
+    }
+  }
+  if (lastError) throw lastError;
+  for (const b of pending.balances.values()) {
+    await accountRepository.updateBalance(b.accountNumber, b.bank, b.balance);
+  }
+}
+
+/** Same selection saveTransaction would make, memoized per scan (rules do not change mid-scan). */
+async function prepareNewTransaction(
+  ctx: ScanContext,
+  transaction: Transaction,
+  skipAutoCategorization: boolean,
+): Promise<Transaction> {
+  let tx = makeTransaction({ ...transaction, profileId: transaction.profileId ?? (await profileRepository.getActiveProfileId()) });
+  if (skipAutoCategorization || tx.categoryId != null) return tx;
+  const key = `${tx.type ?? ''}\u0000${tx.receiver ?? ''}\u0000${tx.creditor ?? ''}`;
+  let selection = ctx.categorization.get(key);
+  if (!selection) {
+    selection = autoCategorization.getCategorySelectionForTransaction({
+      type: tx.type,
+      receiver: tx.receiver,
+      creditor: tx.creditor,
+    });
+    ctx.categorization.set(key, selection);
+  }
+  const resolved = await selection;
+  if (resolved && resolved.categoryIds.length > 0) {
+    tx = makeTransaction({ ...tx, categoryId: resolved.primaryCategoryId, categoryIds: resolved.categoryIds });
+  }
+  return tx;
+}
+
+function queueInsert(ctx: ScanContext, tx: Transaction): void {
+  ctx.pending.transactions.push(tx);
+  ctx.index.add(tx);
+}
+
+function queueOwnershipFromSms(
+  ctx: ScanContext,
+  reference: string,
+  check: SmsOwnershipCheck,
+  sourceSubscriptionId: number | null,
+  sourceMessageId: string | null | undefined,
+): void {
+  let update: TransactionOwnershipUpdate | null = null;
+  if (check.conflict) {
+    // Addressed to someone else's account: drop an automatic owner an older rule gave it.
+    update = { reference, ownerAccountNumber: null, ownerAssignmentSource: OwnerAssignment.conflict };
+  } else if (check.owner) {
+    update = {
+      reference,
+      ownerAccountNumber: check.owner.account.accountNumber,
+      ownerAssignmentSource: OwnerAssignment.automatic,
+      sourceSubscriptionId,
+      sourceMessageId: sourceMessageId ?? null,
+    };
+  }
+  // Unchanged rows need no write: the index mirrors what the table holds.
+  if (update && ctx.index.updateOwnership(reference, update)) ctx.pending.ownershipUpdates.push(update);
+}
+
+function queueBalance(ctx: ScanContext, account: Account, balance: number): void {
+  const key = `${account.bank}|${account.accountNumber}`;
+  ctx.pending.balances.delete(key);
+  ctx.pending.balances.set(key, { accountNumber: account.accountNumber, bank: account.bank, balance });
+  for (const a of ctx.accounts) {
+    if (a.accountNumber === account.accountNumber && a.bank === account.bank) a.balance = balance;
+  }
+}
+
+/** Keeps the raw text of every parsed bank SMS (success and duplicate paths). */
+function captureTransactionSourceSms(
+  ctx: ScanContext,
+  params: {
+    transactionReference: string;
+    body: string;
+    senderAddress: string;
+    receivedAt: Date | null | undefined;
+    messageId: string | null | undefined;
+  },
+): void {
+  const reference = params.transactionReference.trim();
+  if (!reference || !params.body.trim()) return;
+  ctx.pending.sourceSms.push({
+    transactionReference: reference,
+    body: params.body,
+    senderAddress: params.senderAddress.trim(),
+    receivedAt: params.receivedAt ? params.receivedAt.toISOString() : null,
+    messageId: params.messageId ?? null,
+  });
+}
+
 // ------------------------------------------------------------------ ATM cash wallet
 
 function isAtmWithdrawal(details: Record<string, unknown>, body: string): boolean {
@@ -278,13 +510,9 @@ function isAtmWithdrawal(details: Record<string, unknown>, body: string): boolea
   return normalized.includes('atm') && normalized.includes('withdraw');
 }
 
-async function currentCashWalletBalance(existing: Transaction[]): Promise<number> {
-  const accounts = await accountRepository.getAccounts();
-  const base = accounts.filter((a) => a.bank === CASH_BANK_ID).reduce((sum, a) => sum + a.balance, 0);
-  const delta = existing
-    .filter((t) => t.bankId === CASH_BANK_ID)
-    .reduce((sum, t) => (t.type === 'DEBIT' ? sum - t.amount : t.type === 'CREDIT' ? sum + t.amount : sum), 0);
-  return base + delta;
+function currentCashWalletBalance(ctx: ScanContext): number {
+  const base = ctx.accounts.filter((a) => a.bank === CASH_BANK_ID).reduce((sum, a) => sum + a.balance, 0);
+  return base + ctx.index.cashWalletDelta();
 }
 
 async function cleanupHistoricalAtmCashTransactions(cutoff: Date): Promise<void> {
@@ -321,104 +549,35 @@ async function getAtmCashTransferCutoff(): Promise<Date> {
   return cutoff;
 }
 
-async function createCashTransactionForAtmWithdrawal(withdrawal: Transaction, existing: Transaction[]): Promise<void> {
+async function createCashTransactionForAtmWithdrawal(ctx: ScanContext, withdrawal: Transaction): Promise<void> {
   const bankId = withdrawal.bankId;
   if (bankId == null || bankId === CASH_BANK_ID) return;
 
   const withdrawalTime = withdrawal.time ? Date.parse(withdrawal.time) : Number.NaN;
-  if (!Number.isNaN(withdrawalTime) && withdrawalTime < (await getAtmCashTransferCutoff()).getTime()) {
-    return;
-  }
+  if (!Number.isNaN(withdrawalTime) && withdrawalTime < ctx.atmCutoff.getTime()) return;
 
   const cashReference = `${CASH_ATM_REFERENCE_PREFIX}${withdrawal.reference}`;
-  if (existing.some((t) => t.reference === cashReference)) return;
+  if (ctx.index.hasReference(cashReference)) return;
 
   // getAccounts() guarantees the cash wallet account exists.
-  const balance = await currentCashWalletBalance(existing);
-  await transactionRepository.saveTransaction({
-    amount: withdrawal.amount,
-    reference: cashReference,
-    creditor: 'ATM withdrawal',
-    time: withdrawal.time ?? new Date().toISOString(),
-    bankId: CASH_BANK_ID,
-    type: 'CREDIT',
-    currentBalance: (balance + withdrawal.amount).toFixed(2),
-    transactionLink: withdrawal.reference,
-    accountNumber: CASH_ACCOUNT_NUMBER,
-    ownerAccountNumber: CASH_ACCOUNT_NUMBER,
-  });
-}
-
-// ------------------------------------------------------------------ duplicates and provenance
-
-function findSmsSourceDuplicate(details: Record<string, unknown>, existing: Transaction[]): Transaction | null {
-  const sourceType = typeof details.sourceType === 'string' ? details.sourceType.trim() : null;
-  if (sourceType !== SMS_SOURCE_TYPE) return null;
-
-  const messageId = details.sourceMessageId != null ? String(details.sourceMessageId).trim() : '';
-  const fingerprint = details.sourceFingerprint != null ? String(details.sourceFingerprint).trim() : '';
-  if (!messageId && !fingerprint) return null;
-
-  for (const tx of existing) {
-    if (tx.sourceType !== SMS_SOURCE_TYPE) continue;
-    if (fingerprint && tx.sourceFingerprint === fingerprint) return tx;
-    if (!messageId || tx.sourceMessageId !== messageId) continue;
-    const existingFingerprint = tx.sourceFingerprint?.trim();
-    if (!fingerprint || !existingFingerprint || existingFingerprint === fingerprint) return tx;
-  }
-  return null;
-}
-
-function isDashenExactDuplicate(details: Record<string, unknown>, existing: Transaction[]): boolean {
-  if (details.bankId !== DASHEN_BANK_ID || typeof details.amount !== 'number') return false;
-  return hasExactAmountAndBalanceDuplicate(transactionFromJson(details), existing);
-}
-
-async function captureTransactionSourceSms(params: {
-  transactionReference: string;
-  body: string;
-  senderAddress: string;
-  receivedAt: Date | null | undefined;
-  messageId: string | null | undefined;
-}): Promise<void> {
-  const reference = params.transactionReference.trim();
-  if (!reference || !params.body.trim()) return;
-  try {
-    await sourceSmsRepository.upsert({
-      transactionReference: reference,
-      body: params.body,
-      senderAddress: params.senderAddress.trim(),
-      receivedAt: params.receivedAt ? params.receivedAt.toISOString() : null,
-      messageId: params.messageId ?? null,
-    });
-  } catch (error) {
-    if (__DEV__) console.warn(`debug: Could not retain source SMS for ${reference}`, error);
-  }
-}
-
-async function updateOwnershipFromSms(
-  reference: string,
-  check: SmsOwnershipCheck,
-  options: ProcessOptions,
-): Promise<void> {
-  if (check.conflict) {
-    // Addressed to someone else's account: drop an automatic owner an older rule gave it.
-    await transactionRepository.updateTransactionOwnership({
-      reference,
-      ownerAccountNumber: null,
-      ownerAssignmentSource: OwnerAssignment.conflict,
-    });
-    return;
-  }
-  const owner = check.owner;
-  if (!owner) return;
-  await transactionRepository.updateTransactionOwnership({
-    reference,
-    ownerAccountNumber: owner.account.accountNumber,
-    ownerAssignmentSource: OwnerAssignment.automatic,
-    sourceSubscriptionId: options.sourceSubscriptionId ?? null,
-    sourceMessageId: options.sourceMessageId ?? null,
-  });
+  const balance = currentCashWalletBalance(ctx);
+  const cashTx = await prepareNewTransaction(
+    ctx,
+    {
+      amount: withdrawal.amount,
+      reference: cashReference,
+      creditor: 'ATM withdrawal',
+      time: withdrawal.time ?? new Date().toISOString(),
+      bankId: CASH_BANK_ID,
+      type: 'CREDIT',
+      currentBalance: (balance + withdrawal.amount).toFixed(2),
+      transactionLink: withdrawal.reference,
+      accountNumber: CASH_ACCOUNT_NUMBER,
+      ownerAccountNumber: CASH_ACCOUNT_NUMBER,
+    },
+    false,
+  );
+  queueInsert(ctx, cashTx);
 }
 
 // ------------------------------------------------------------------ notifications
@@ -448,15 +607,72 @@ async function showTransactionNotificationUnlessSelfTransferNow(transaction: Tra
   await notificationService.showTransactionNotification(transaction);
 }
 
-function showTransactionNotificationUnlessSelfTransfer(transaction: Transaction): Promise<void> {
-  const turn = notificationTurn.then(() => showTransactionNotificationUnlessSelfTransferNow(transaction));
+/**
+ * Shows the transaction notification unless this reference was already notified (by the
+ * live listener, the headless task or a catch-up scan). Notifications run one at a time,
+ * so the check-and-mark cannot race.
+ */
+function notifyTransactionOnce(transaction: Transaction): Promise<void> {
+  const turn = notificationTurn.then(async () => {
+    const reference = transaction.reference.trim();
+    if (!reference) return;
+    if ((await notificationService.getNotifiedTransactionReferences()).has(reference)) return;
+    await notificationService.markTransactionsNotified([reference]);
+    await showTransactionNotificationUnlessSelfTransferNow(transaction);
+  });
   notificationTurn = turn.catch(() => undefined);
   return turn;
 }
 
+function isRecent(time: Date | string | null | undefined, now = Date.now()): boolean {
+  if (time == null) return false;
+  const ms = typeof time === 'string' ? Date.parse(time) : time.getTime();
+  return Number.isFinite(ms) && ms >= now - RECENT_NOTIFICATION_WINDOW_MS && ms <= now + RECENT_NOTIFICATION_WINDOW_MS;
+}
+
+/**
+ * After a catch-up scan: notifies for recent transactions it added that nobody notified yet
+ * (the live receiver missed them, e.g. the app was killed). Capped, with one summary for the rest.
+ */
+async function notifyNewTransactionsFromScan(added: AddedSmsTransaction[]): Promise<void> {
+  try {
+    const now = Date.now();
+    const recent = added
+      .filter((a) => isRecent(a.messageDate ?? a.transaction.time ?? null, now))
+      .map((a) => a.transaction)
+      .reverse(); // newest first
+    if (recent.length === 0) return;
+    const notified = await notificationService.getNotifiedTransactionReferences();
+    const fresh = recent.filter((tx) => !notified.has(tx.reference.trim()));
+    for (const tx of fresh.slice(0, MAX_INDIVIDUAL_CATCHUP_NOTIFICATIONS)) await notifyTransactionOnce(tx);
+    const rest = fresh.slice(MAX_INDIVIDUAL_CATCHUP_NOTIFICATIONS);
+    if (rest.length > 0) {
+      await notificationService.markTransactionsNotified(rest.map((tx) => tx.reference));
+      await notificationService.showNewTransactionsSummary({ count: rest.length });
+    }
+  } catch (error) {
+    if (__DEV__) console.warn('debug: Could not notify new transactions from scan', error);
+  }
+}
+
+async function checkBudgetAlertsAfterImport(ctx: ScanContext): Promise<void> {
+  if (!ctx.addedDebit) return;
+  try {
+    const { checkAndNotifyBudgetAlerts } = await import('./budgetAlert');
+    await checkAndNotifyBudgetAlerts();
+  } catch (error) {
+    if (__DEV__) console.warn('debug: Error checking budget alerts after SMS transaction', error);
+  }
+}
+
 // ------------------------------------------------------------------ core parsing
 
-async function processInternal(body: string, sender: string, options: ProcessOptions): Promise<ParseResult> {
+async function processInternal(
+  body: string,
+  sender: string,
+  options: ProcessOptions,
+  ctx: ScanContext,
+): Promise<ParseResult> {
   const notifyUser = options.notifyUser ?? false;
   const skipDashen = options.skipDashenExpenseDuplicates ?? true;
   const skipAutoCategorization = options.skipAutoCategorization ?? false;
@@ -464,7 +680,7 @@ async function processInternal(body: string, sender: string, options: ProcessOpt
   const messageDate = options.messageDate ?? null;
   const subscriptionId = normalizedSubscriptionId(options.sourceSubscriptionId);
 
-  const bank = await getRelevantBank(sender);
+  const bank = sender ? findBankForSender(sender, ctx.banks) : null;
   if (!bank) return { status: 'noBank', reason: 'No matching bank' };
 
   if (isTelebirrAtmAuthorization(bank.id, body)) {
@@ -476,15 +692,12 @@ async function processInternal(body: string, sender: string, options: ProcessOpt
 
   // Messages from banks without a registered account are still saved. Their parsed account
   // numbers show up as unlabeled accounts the user can name later, without reparsing.
-  const registeredAccounts = await accountRepository.getAccounts();
+  const registeredAccounts = ctx.accounts;
 
-  // 1. Patterns for this bank.
-  const patterns = (await smsConfigService.getPatterns({ allowRemoteFetch: false })).filter((p) => p.bankId === bank.id);
-
-  // 2. Parse.
+  // 1-2. Parse with this bank's patterns.
   const parsed = parsePatternMessage({
     message: smsConfigService.cleanSmsText(body),
-    patterns,
+    patterns: ctx.patternsByBank.get(bank.id) ?? [],
     bank,
     bankId: bank.id,
     messageDate,
@@ -493,6 +706,7 @@ async function processInternal(body: string, sender: string, options: ProcessOpt
   if (!parsed) {
     if (notifyUser && recordFailure) {
       try {
+        // The caller notifies for a canonical success.
         const canonical = await retryCanonicalInboxCopy({
           originalBody: body,
           senderAddress: sender,
@@ -501,12 +715,7 @@ async function processInternal(body: string, sender: string, options: ProcessOpt
           skipDashenExpenseDuplicates: skipDashen,
           skipAutoCategorization,
         });
-        if (canonical) {
-          if (canonical.status === 'success' && canonical.transaction) {
-            await showTransactionNotificationUnlessSelfTransfer(canonical.transaction);
-          }
-          return canonical;
-        }
+        if (canonical) return canonical;
       } catch (error) {
         if (__DEV__) console.warn('debug: Canonical inbox retry failed', error);
       }
@@ -554,7 +763,7 @@ async function processInternal(body: string, sender: string, options: ProcessOpt
   if (messageDate) details.time = messageDate.toISOString();
 
   const parsedBankId = parsed.bankId ?? bank.id;
-  const ownershipBank = parsedBankId === bank.id ? bank : bankById(await bankRepository.getBanks(), parsedBankId);
+  const ownershipBank = parsedBankId === bank.id ? bank : bankById(ctx.banks, parsedBankId);
   let ownership: SmsOwnershipCheck = { owner: null, conflict: false };
   if (ownershipBank) {
     const bankAccounts: Account[] = registeredAccounts.filter((a) => a.bank === parsedBankId);
@@ -576,7 +785,13 @@ async function processInternal(body: string, sender: string, options: ProcessOpt
         // Learn a SIM binding only from explicit owner context; parsed wallet
         // numbers can describe the transfer counterparty.
         if (owner.matchedByGreeting) {
-          await accountRepository.bindSmsSubscription(owner.account.accountNumber, parsedBankId, subscriptionId);
+          const accountNumber = owner.account.accountNumber;
+          if (await accountRepository.bindSmsSubscription(accountNumber, parsedBankId, subscriptionId)) {
+            // Later messages in this scan must see the binding, as a re-read would.
+            for (const a of ctx.accounts) {
+              if (a.accountNumber === accountNumber && a.bank === parsedBankId) a.smsSubscriptionId = subscriptionId;
+            }
+          }
         }
       }
     }
@@ -599,9 +814,8 @@ async function processInternal(body: string, sender: string, options: ProcessOpt
   });
 
   // 3. Duplicates.
-  const existing = await transactionRepository.getTransactions();
   const capture = (reference: string) =>
-    captureTransactionSourceSms({
+    captureTransactionSourceSms(ctx, {
       transactionReference: reference,
       body,
       senderAddress: sender,
@@ -609,23 +823,23 @@ async function processInternal(body: string, sender: string, options: ProcessOpt
       messageId: options.sourceMessageId,
     });
 
-  const sourceDuplicate = findSmsSourceDuplicate(details, existing);
+  const sourceDuplicate = ctx.index.findSmsSourceDuplicate(details);
   if (sourceDuplicate) {
-    await updateOwnershipFromSms(sourceDuplicate.reference, ownership, { ...options, sourceSubscriptionId: subscriptionId });
-    await capture(sourceDuplicate.reference);
-    return { status: 'duplicate', reason: 'Duplicate SMS source' };
+    queueOwnershipFromSms(ctx, sourceDuplicate.reference, ownership, subscriptionId, options.sourceMessageId);
+    capture(sourceDuplicate.reference);
+    return { status: 'duplicate', reason: 'Duplicate SMS source', existing: sourceDuplicate };
   }
 
   const newRef = typeof details.reference === 'string' ? details.reference : null;
-  if (newRef && existing.some((t) => t.reference === newRef)) {
+  const referenceMatch = newRef ? ctx.index.getByReference(newRef) : null;
+  if (newRef && referenceMatch) {
     // A shared bank reference is not ownership evidence. Telebirr legs are
     // scoped above; any remaining collision is the same logical row.
-    await updateOwnershipFromSms(newRef, ownership, { ...options, sourceSubscriptionId: subscriptionId });
-    await capture(newRef);
+    queueOwnershipFromSms(ctx, newRef, ownership, subscriptionId, options.sourceMessageId);
+    capture(newRef);
     if (isAtmWithdrawal(details, body)) {
       try {
-        const match = existing.find((t) => t.reference === newRef);
-        if (match) await createCashTransactionForAtmWithdrawal(match, existing);
+        await createCashTransactionForAtmWithdrawal(ctx, referenceMatch);
       } catch (error) {
         if (__DEV__) console.warn('debug: Error reconciling cash transfer', error);
       }
@@ -634,10 +848,15 @@ async function processInternal(body: string, sender: string, options: ProcessOpt
     if (recordFailure) {
       await recordFailedParse({ address: sender, body, reason, timestamp: messageDate, bankId: parsedBankId });
     }
-    return { status: 'duplicate', reason };
+    return { status: 'duplicate', reason, existing: referenceMatch };
   }
 
-  if (skipDashen && isDashenExactDuplicate(details, existing)) {
+  if (
+    skipDashen &&
+    details.bankId === DASHEN_BANK_ID &&
+    typeof details.amount === 'number' &&
+    ctx.index.hasExactAmountAndBalanceDuplicate(transactionFromJson(details))
+  ) {
     const reason = 'Duplicate Dashen transaction by amount and balance';
     if (recordFailure) {
       await recordFailedParse({ address: sender, body, reason, timestamp: messageDate, bankId: parsedBankId });
@@ -650,49 +869,46 @@ async function processInternal(body: string, sender: string, options: ProcessOpt
     const ownerAccount = owner.account;
     const at = messageDate?.getTime() ?? Date.now();
     const bankAccounts = registeredAccounts.filter((a) => a.bank === ownerAccount.bank);
-    const hasNewer = existing.some((t) => {
-      if (t.bankId !== ownerAccount.bank || !t.currentBalance?.trim() || !t.time) return false;
-      const time = new Date(t.time).getTime();
-      return time > at && transactionBelongsToAccount(t, ownerAccount, ownershipBank, bankAccounts);
-    });
-    if (!hasNewer) {
-      await accountRepository.updateBalance(ownerAccount.accountNumber, ownerAccount.bank, sanitizeAmount(parsed.currentBalance));
+    if (!ctx.index.hasNewerBalance({ account: ownerAccount, at, bank: ownershipBank, bankAccounts })) {
+      queueBalance(ctx, ownerAccount, sanitizeAmount(parsed.currentBalance));
     }
   }
 
   // 5. Save.
-  const newTx = transactionFromJson(details);
-  await transactionRepository.saveTransaction(newTx, { skipAutoCategorization });
-  const saved = (await transactionRepository.getTransactionByReference(newTx.reference)) ?? newTx;
-  await capture(saved.reference);
+  const saved = await prepareNewTransaction(ctx, transactionFromJson(details), skipAutoCategorization);
+  queueInsert(ctx, saved);
+  capture(saved.reference);
 
   if (isAtmWithdrawal(details, body)) {
     try {
-      await createCashTransactionForAtmWithdrawal(saved, existing);
+      await createCashTransactionForAtmWithdrawal(ctx, saved);
     } catch (error) {
       if (__DEV__) console.warn('debug: Error creating cash transfer', error);
     }
   }
 
-  if (notifyUser) await showTransactionNotificationUnlessSelfTransfer(saved);
-
-  if (saved.type === 'DEBIT') {
-    try {
-      const { checkAndNotifyBudgetAlerts } = await import('./budgetAlert');
-      await checkAndNotifyBudgetAlerts();
-    } catch (error) {
-      if (__DEV__) console.warn('debug: Error checking budget alerts after SMS transaction', error);
-    }
-  }
-
-  dataChanged.notify();
+  ctx.added.push({ transaction: saved, messageDate });
+  if (saved.type === 'DEBIT') ctx.addedDebit = true;
   return { status: 'success', transaction: saved };
 }
 
-async function processMessage(
+/**
+ * Parses and stores one message with a fresh context, then writes it. Must run inside the
+ * SMS work lock. Does not notify; callers decide.
+ */
+async function processOneLocked(body: string, sender: string, options: ProcessOptions): Promise<ParseResult> {
+  const ctx = await createScanContext();
+  const result = await processInternal(body, sender, options, ctx);
+  await flushPendingWrites(ctx);
+  await checkBudgetAlertsAfterImport(ctx);
+  if (ctx.added.length > 0) dataChanged.notify();
+  return result;
+}
+
+async function processMessageLocked(
   body: string,
   sender: string,
-  options: Omit<ProcessOptions, 'recordFailure'> = {},
+  options: Omit<ProcessOptions, 'recordFailure'>,
 ): Promise<Transaction | null> {
   let effectiveBody = body;
   let effectiveSender = sender;
@@ -729,14 +945,32 @@ async function processMessage(
     }
   }
 
-  const result = await processInternal(effectiveBody, effectiveSender, {
+  const result = await processOneLocked(effectiveBody, effectiveSender, {
     ...options,
     messageDate: effectiveDate,
     sourceMessageId: effectiveMessageId,
     sourceSubscriptionId: effectiveSubscriptionId,
     recordFailure: true,
   });
+
+  if (options.notifyUser) {
+    if (result.status === 'success' && result.transaction) {
+      await notifyTransactionOnce(result.transaction);
+    } else if (result.status === 'duplicate' && result.existing && isRecent(result.existing.time)) {
+      // A scan (startup catch-up, pull-to-refresh, manual scan) may have imported this
+      // message silently just before the listener got its turn; notify once anyway.
+      await notifyTransactionOnce(result.existing);
+    }
+  }
   return result.transaction ?? null;
+}
+
+function processMessage(
+  body: string,
+  sender: string,
+  options: Omit<ProcessOptions, 'recordFailure'> = {},
+): Promise<Transaction | null> {
+  return exclusive(() => processMessageLocked(body, sender, options));
 }
 
 function retryFailedParse(
@@ -744,59 +978,111 @@ function retryFailedParse(
   sender: string,
   options: Omit<ProcessOptions, 'recordFailure' | 'notifyUser'> = {},
 ): Promise<ParseResult> {
-  return processInternal(body, sender, { ...options, notifyUser: false, recordFailure: false });
+  return exclusive(() => processOneLocked(body, sender, { ...options, notifyUser: false, recordFailure: false }));
 }
 
 // ------------------------------------------------------------------ inbox sync
 
-async function processInboxMessages(messages: RawSms[]): Promise<TodaySmsSyncResult> {
-  const result = { ...EMPTY_SYNC_RESULT };
-  // Oldest first, so the latest balance wins.
-  const chronological = [...messages].sort((a, b) => (a.date ?? 0) - (b.date ?? 0));
-  for (const message of chronological) {
-    const { body, address } = message;
-    if (body == null || address == null) {
-      result.skipped++;
-      continue;
-    }
-    if (!(await getRelevantBank(address))) {
-      result.skipped++;
-      continue;
-    }
-    result.processed++;
-    try {
-      const parsed = await processInternal(body, address, {
-        messageDate: smsDate(message),
-        sourceMessageId: message.id ?? null,
-        sourceSubscriptionId: message.subscriptionId ?? null,
-        notifyUser: false,
-        recordFailure: false,
-      });
-      switch (parsed.status) {
-        case 'success':
-          result.added++;
-          break;
-        case 'duplicate':
-          result.duplicates++;
-          break;
-        case 'noPattern':
-          result.noPattern++;
-          break;
-        default:
-          result.skipped++;
-      }
-    } catch (error) {
-      result.errors++;
-      if (__DEV__) console.warn('debug: Error processing SMS', error);
-    }
-  }
-  return result;
+interface BatchOptions {
+  /** Called every `tickEvery` messages and after the last one. */
+  onTick?: (processed: number, total: number) => void;
+  tickEvery?: number;
 }
 
-async function syncBankSmsRange(params: { start: Date; includeStart: boolean; end: Date }): Promise<TodaySmsSyncResult> {
+/**
+ * Parses messages oldest first against one scan context: O(1) duplicate lookups, writes
+ * flushed in batched transactions, and a UI turn every few dozen messages. Must run inside
+ * the SMS work lock.
+ */
+async function processBatchLocked(
+  messages: RawSms[],
+  options: BatchOptions = {},
+): Promise<{ result: TodaySmsSyncResult; ctx: ScanContext }> {
+  const result = { ...EMPTY_SYNC_RESULT };
+  const chronological = sortChronological(messages);
+  const ctx = await createScanContext();
+  const tickEvery = options.tickEvery ?? 0;
+
+  const flush = async () => {
+    try {
+      await flushPendingWrites(ctx);
+    } catch (error) {
+      // Counted as an error so scan cursors do not move past messages that were not saved.
+      result.errors++;
+      if (__DEV__) console.warn('debug: Could not save imported SMS batch', error);
+    }
+  };
+
+  for (let i = 0; i < chronological.length; i++) {
+    if (i > 0 && i % YIELD_EVERY_MESSAGES === 0) await yieldToUi();
+    const message = chronological[i];
+    const { body, address } = message;
+    if (body == null || address == null || !findBankForSender(address, ctx.banks)) {
+      result.skipped++;
+    } else {
+      result.processed++;
+      try {
+        const parsed = await processInternal(
+          body,
+          address,
+          {
+            messageDate: smsDate(message),
+            sourceMessageId: message.id ?? null,
+            sourceSubscriptionId: message.subscriptionId ?? null,
+            notifyUser: false,
+            recordFailure: false,
+          },
+          ctx,
+        );
+        switch (parsed.status) {
+          case 'success':
+            result.added++;
+            break;
+          case 'duplicate':
+            result.duplicates++;
+            break;
+          case 'noPattern':
+            result.noPattern++;
+            break;
+          default:
+            result.skipped++;
+        }
+      } catch (error) {
+        result.errors++;
+        if (__DEV__) console.warn('debug: Error processing SMS', error);
+      }
+      if (pendingWriteCount(ctx.pending) >= FLUSH_EVERY_WRITES) await flush();
+    }
+    if (tickEvery > 0 && ((i + 1) % tickEvery === 0 || i + 1 === chronological.length)) {
+      options.onTick?.(i + 1, chronological.length);
+    }
+  }
+  await flush();
+  await checkBudgetAlertsAfterImport(ctx);
+  return { result, ctx };
+}
+
+async function processInboxMessages(
+  messages: RawSms[],
+  options: { notifyNewTransactions?: boolean } = {},
+): Promise<TodaySmsSyncResult> {
+  return exclusive(async () => {
+    const { result, ctx } = await processBatchLocked(messages);
+    if (options.notifyNewTransactions) await notifyNewTransactionsFromScan(ctx.added);
+    return result;
+  });
+}
+
+async function syncBankSmsRange(params: {
+  start: Date;
+  includeStart: boolean;
+  end: Date;
+  notifyNewTransactions?: boolean;
+}): Promise<TodaySmsSyncResult> {
   const since = params.start.getTime() + (params.includeStart ? 0 : 1);
-  const messages = await getInbox(since, params.end.getTime());
-  return processInboxMessages(messages);
+  const banks = await bankRepository.getBanks();
+  const messages = await getInbox(since, params.end.getTime(), { senderCodes: senderCodesFor(banks) });
+  return processInboxMessages(messages, { notifyNewTransactions: params.notifyNewTransactions });
 }
 
 async function getLastSmsCatchupAt(): Promise<Date | null> {
@@ -823,7 +1109,11 @@ async function syncTodayBankSms(): Promise<TodaySmsSyncResult> {
   return result;
 }
 
-/** Imports bank SMS that arrived while the app was not listening (since the last catch-up today). */
+/**
+ * Imports bank SMS that arrived while the app was not listening (since the last catch-up today).
+ * Runs at startup and from the periodic background task. Recent transactions it finds were
+ * missed by the live receiver, so they are notified (once) unless this is the very first run.
+ */
 async function syncMissedBankSmsSinceLastCatchup(): Promise<TodaySmsSyncResult> {
   if (Platform.OS !== 'android') return { ...EMPTY_SYNC_RESULT };
   if (!hasSmsPermission()) return { ...EMPTY_SYNC_RESULT, permissionDenied: true };
@@ -838,13 +1128,28 @@ async function syncMissedBankSmsSinceLastCatchup(): Promise<TodaySmsSyncResult> 
     lastCatchupAt.getTime() <= scanEndedAt.getTime();
 
   const scanStart = hasCursor ? lastCatchupAt : dayStart;
-  const result = await syncBankSmsRange({ start: scanStart, includeStart: !hasCursor, end: scanEndedAt });
+  const result = await syncBankSmsRange({
+    start: scanStart,
+    includeStart: !hasCursor,
+    end: scanEndedAt,
+    // No cursor at all means the first launch: today's messages are history, not news.
+    notifyNewTransactions: lastCatchupAt !== null,
+  });
   if (result.errors === 0) {
     await setLastSmsCatchupAt(scanEndedAt);
     await extendLastScanAt(scanStart, scanEndedAt);
   }
   if (result.added > 0) dataChanged.notify();
   return result;
+}
+
+async function reconcileAccountsBestEffort(): Promise<void> {
+  try {
+    const { reconcileAccounts } = await import('./accountLabeling');
+    await reconcileAccounts();
+  } catch (error) {
+    if (__DEV__) console.warn('debug: Could not reconcile account owners', error);
+  }
 }
 
 /**
@@ -863,7 +1168,7 @@ async function syncBankHistory(params: {
   if (!bank) return { ...EMPTY_SYNC_RESULT };
   await getAtmCashTransferCutoff();
 
-  const inbox = await getInbox(0, Date.now());
+  const inbox = await getInbox(0, Date.now(), { senderCodes: senderCodesFor([bank]) });
   const seen = new Set<string>();
   const messages = inbox.filter((m) => {
     if (!m.address || !m.body || !senderAddressMatchesBank(bank, m.address, banks)) return false;
@@ -884,39 +1189,18 @@ async function syncBankHistory(params: {
       })
       .catch(() => undefined);
 
-  const result = { ...EMPTY_SYNC_RESULT };
-  const chronological = [...messages].sort((a, b) => (a.date ?? 0) - (b.date ?? 0));
-  for (let i = 0; i < chronological.length; i++) {
-    const message = chronological[i];
-    result.processed++;
-    try {
-      const parsed = await processInternal(message.body!, message.address!, {
-        messageDate: smsDate(message),
-        sourceMessageId: message.id ?? null,
-        sourceSubscriptionId: message.subscriptionId ?? null,
-        notifyUser: false,
-        recordFailure: false,
-      });
-      if (parsed.status === 'success') result.added++;
-      else if (parsed.status === 'duplicate') result.duplicates++;
-      else if (parsed.status === 'noPattern') result.noPattern++;
-      else result.skipped++;
-    } catch (error) {
-      result.errors++;
-      if (__DEV__) console.warn('debug: Error importing SMS history', error);
-    }
-    if ((i + 1) % 10 === 0 || i + 1 === chronological.length) {
-      params.onProgress?.(i + 1, chronological.length);
-      void notify(i + 1);
-    }
-  }
+  const result = await exclusive(async () => {
+    const batch = await processBatchLocked(messages, {
+      tickEvery: 10,
+      onTick: (processed, total) => {
+        params.onProgress?.(processed, total);
+        void notify(processed);
+      },
+    });
+    await reconcileAccountsBestEffort();
+    return batch.result;
+  });
 
-  try {
-    const { reconcileAccounts } = await import('./accountLabeling');
-    await reconcileAccounts();
-  } catch (error) {
-    if (__DEV__) console.warn('debug: Could not reconcile account owners', error);
-  }
   await notificationService
     .showAccountSyncComplete({
       bankId: bank.id,
@@ -939,7 +1223,8 @@ type ScanProgress = (processed: number, total: number) => void;
 /** Every supported bank message received in [sinceMs, untilMs], without duplicates. */
 async function bankInbox(sinceMs: number, untilMs: number): Promise<RawSms[]> {
   const banks = await bankRepository.getBanks();
-  const inbox = await getInbox(sinceMs, untilMs);
+  // The native side drops other senders; the exact best-bank check stays here.
+  const inbox = await getInbox(sinceMs, untilMs, { senderCodes: senderCodesFor(banks) });
   const seen = new Set<string>();
   return inbox.filter((m) => {
     if (!m.address || !m.body || !findBankForSender(m.address, banks)) return false;
@@ -951,47 +1236,33 @@ async function bankInbox(sinceMs: number, untilMs: number): Promise<RawSms[]> {
 }
 
 /** Parses bank messages oldest first with progress, then re-checks account owners and balances. */
-async function runBankScan(messages: RawSms[], onProgress?: ScanProgress): Promise<TodaySmsSyncResult> {
+async function runBankScan(
+  messages: RawSms[],
+  onProgress?: ScanProgress,
+  options: { notifyNewTransactions?: boolean } = {},
+): Promise<TodaySmsSyncResult> {
   await getAtmCashTransferCutoff();
   const progressNotice = { bankId: 0, accountNumber: 'all', bankName: 'bank messages' };
-  const result = { ...EMPTY_SYNC_RESULT };
-  const chronological = [...messages].sort((a, b) => (a.date ?? 0) - (b.date ?? 0));
-  onProgress?.(0, chronological.length);
-  for (let i = 0; i < chronological.length; i++) {
-    const message = chronological[i];
-    result.processed++;
-    try {
-      const parsed = await processInternal(message.body!, message.address!, {
-        messageDate: smsDate(message),
-        sourceMessageId: message.id ?? null,
-        sourceSubscriptionId: message.subscriptionId ?? null,
-        notifyUser: false,
-        recordFailure: false,
-      });
-      if (parsed.status === 'success') result.added++;
-      else if (parsed.status === 'duplicate') result.duplicates++;
-      else if (parsed.status === 'noPattern') result.noPattern++;
-      else result.skipped++;
-    } catch (error) {
-      result.errors++;
-      if (__DEV__) console.warn('debug: Error importing bank SMS', error);
-    }
-    if ((i + 1) % 25 === 0 || i + 1 === chronological.length) {
-      onProgress?.(i + 1, chronological.length);
-      if (chronological.length > 50) {
-        void notificationService
-          .showAccountSyncProgress({ ...progressNotice, processed: i + 1, total: chronological.length })
-          .catch(() => undefined);
-      }
-    }
-  }
-  try {
-    const { reconcileAccounts } = await import('./accountLabeling');
-    await reconcileAccounts();
-  } catch (error) {
-    if (__DEV__) console.warn('debug: Could not reconcile account owners', error);
-  }
-  if (chronological.length > 50) {
+  const total = messages.length;
+  onProgress?.(0, total);
+  const result = await exclusive(async () => {
+    const batch = await processBatchLocked(messages, {
+      tickEvery: 25,
+      onTick: (processed, count) => {
+        onProgress?.(processed, count);
+        if (count > 50) {
+          void notificationService
+            .showAccountSyncProgress({ ...progressNotice, processed, total: count })
+            .catch(() => undefined);
+        }
+      },
+    });
+    await reconcileAccountsBestEffort();
+    // After reconciling, so self-transfer detection sees the final owners.
+    if (options.notifyNewTransactions) await notifyNewTransactionsFromScan(batch.ctx.added);
+    return batch.result;
+  });
+  if (total > 50) {
     await notificationService.showAccountSyncComplete({ ...progressNotice, added: result.added }).catch(() => undefined);
   }
   dataChanged.notify();
@@ -1033,7 +1304,7 @@ async function getLastScanAt(): Promise<Date | null> {
 /**
  * Parses the whole inbox once for every supported bank, whether or not an account is
  * registered for it. Accounts found in the messages show up as unlabeled accounts, so
- * labeling one later doesn't need another pass over the inbox.
+ * labeling one later doesn't need another pass over the inbox. Never notifies per transaction.
  */
 async function syncAllBankHistory(params: { onProgress?: ScanProgress } = {}): Promise<TodaySmsSyncResult> {
   if (Platform.OS !== 'android') return { ...EMPTY_SYNC_RESULT };
@@ -1050,7 +1321,7 @@ async function syncAllBankHistory(params: { onProgress?: ScanProgress } = {}): P
 /**
  * Reads only the bank messages received since the last scan (a few minutes of overlap catch
  * messages that arrived while that scan ran; duplicates are skipped). Without an earlier scan
- * this is the full import.
+ * this is the full import. New recent transactions are notified once, like a catch-up.
  */
 async function syncBankSmsSinceLastScan(params: { onProgress?: ScanProgress } = {}): Promise<TodaySmsSyncResult & { since: Date | null }> {
   if (Platform.OS !== 'android') return { ...EMPTY_SYNC_RESULT, since: null };
@@ -1059,7 +1330,9 @@ async function syncBankSmsSinceLastScan(params: { onProgress?: ScanProgress } = 
   if (!since) return { ...(await syncAllBankHistory(params)), since: null };
   const scanEndedAt = new Date();
   const from = Math.max(0, since.getTime() - SCAN_OVERLAP_MS);
-  const result = await runBankScan(await bankInbox(from, scanEndedAt.getTime()), params.onProgress);
+  const result = await runBankScan(await bankInbox(from, scanEndedAt.getTime()), params.onProgress, {
+    notifyNewTransactions: true,
+  });
   if (result.errors === 0) {
     await setLastFullScanAt(scanEndedAt);
     await setLastSmsCatchupAt(scanEndedAt);
@@ -1078,14 +1351,29 @@ async function syncBankSmsBetween(params: { start: Date; end: Date; onProgress?:
 // ------------------------------------------------------------------ incoming SMS
 
 async function handleIncomingSms(sms: RawSms): Promise<Transaction | null> {
-  if (!sms.body || !sms.address) return null;
-  if (!(await isRelevantMessage(sms.address))) return null;
-  return processMessage(sms.body, sms.address, {
+  const { body, address } = sms;
+  if (!body || !address) return null;
+  if (!(await isRelevantMessage(address))) return null;
+  return processMessage(body, address, {
     notifyUser: true,
     messageDate: smsDate(sms),
     sourceMessageId: sms.id ?? null,
     sourceSubscriptionId: sms.subscriptionId ?? null,
   });
+}
+
+/**
+ * The headless SMS task and the periodic background task can run in a JS runtime where App
+ * never booted: open the database and set up notification channels/handler first.
+ * Patterns need nothing: getPatterns falls back to the stored or bundled set without network.
+ */
+export async function prepareBackgroundRuntime(): Promise<void> {
+  await getDb();
+  try {
+    await notificationService.initialize();
+  } catch (error) {
+    if (__DEV__) console.warn('debug: Notification setup in background runtime failed', error);
+  }
 }
 
 let listenerSubscription: { remove(): void } | null = null;
@@ -1110,13 +1398,14 @@ export function startSmsListener(onSaved?: (tx: Transaction) => void): () => voi
 }
 
 /**
- * The native SMS receiver starts this headless task when a message arrives
- * while no React context is running (app killed).
+ * The native SMS receiver starts this headless task when a message arrives while no JS
+ * listener is registered (app killed, or the runtime is still booting).
  */
 export function registerSmsHeadlessTask(): void {
   if (Platform.OS !== 'android') return;
   AppRegistry.registerHeadlessTask(SMS_HEADLESS_TASK, () => async (data: RawSms) => {
     try {
+      await prepareBackgroundRuntime();
       await handleIncomingSms(data);
     } catch (error) {
       if (__DEV__) console.warn('debug: Headless SMS processing failed', error);

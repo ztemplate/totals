@@ -2,6 +2,14 @@ import { getDb } from '../db/database';
 import { categoryFromDb, type Category, type CategoryFlow } from '../models/category';
 import { decodeCategoryIds } from '../models/transaction';
 import { autoCategorization } from '../services/autoCategorization';
+import { parentError } from '../utils/categoryTree';
+
+/** Throws when `parentId` can't be the parent of `category` (other flow, missing, or a cycle). */
+async function assertValidParent(category: Category, parentId: number | null | undefined): Promise<void> {
+  if (parentId == null) return;
+  const error = parentError(await categoryRepository.getCategories(), category, parentId);
+  if (error) throw new Error(error);
+}
 
 export const categoryRepository = {
   async getCategories(): Promise<Category[]> {
@@ -21,6 +29,7 @@ export const categoryRepository = {
     description?: string | null;
     flow?: CategoryFlow;
     recurring?: boolean;
+    parentId?: number | null;
   }): Promise<Category> {
     const db = await getDb();
     const name = params.name.trim();
@@ -35,10 +44,12 @@ export const categoryRepository = {
       recurring: params.recurring ?? false,
       builtIn: false,
       builtInKey: null,
+      parentId: params.parentId ?? null,
     };
+    await assertValidParent(category, category.parentId);
     const result = await db.runAsync(
-      `INSERT INTO categories (name, essential, uncategorized, iconKey, colorKey, description, flow, recurring, builtIn, builtInKey)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, NULL)`,
+      `INSERT INTO categories (name, essential, uncategorized, iconKey, colorKey, description, flow, recurring, builtIn, builtInKey, parentId)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, NULL, ?)`,
       [
         name,
         category.essential ? 1 : 0,
@@ -48,6 +59,7 @@ export const categoryRepository = {
         category.description ?? null,
         category.flow,
         category.recurring ? 1 : 0,
+        category.parentId ?? null,
       ],
     );
     return { ...category, id: result.lastInsertRowId };
@@ -55,10 +67,11 @@ export const categoryRepository = {
 
   async updateCategory(category: Category): Promise<void> {
     if (category.id == null) return;
+    await assertValidParent(category, category.parentId);
     const db = await getDb();
     await db.runAsync(
       `UPDATE categories SET name = ?, essential = ?, uncategorized = ?, iconKey = ?, colorKey = ?, description = ?,
-         flow = ?, recurring = ?, builtIn = ?, builtInKey = ? WHERE id = ?`,
+         flow = ?, recurring = ?, builtIn = ?, builtInKey = ?, parentId = ? WHERE id = ?`,
       [
         category.name.trim(),
         category.essential ? 1 : 0,
@@ -70,12 +83,26 @@ export const categoryRepository = {
         category.recurring ? 1 : 0,
         category.builtIn ? 1 : 0,
         category.builtInKey ?? null,
+        category.parentId ?? null,
         category.id,
       ],
     );
+    // Subcategories must share their parent's flow.
+    await db.runAsync('UPDATE categories SET parentId = NULL WHERE parentId = ? AND flow <> ?', [category.id, category.flow]);
   },
 
-  /** Deletes a user category and strips it from every transaction and rule. */
+  /** Moves a category under another one (same flow), or to the top level with null. */
+  async setParent(category: Category, parentId: number | null): Promise<void> {
+    if (category.id == null) return;
+    await assertValidParent(category, parentId);
+    const db = await getDb();
+    await db.runAsync('UPDATE categories SET parentId = ? WHERE id = ?', [parentId, category.id]);
+  },
+
+  /**
+   * Deletes a user category and strips it from every transaction and rule.
+   * Its subcategories move up to its own parent (top level for a major category).
+   */
   async deleteCategory(category: Category): Promise<void> {
     if (category.id == null) return;
     if (category.builtIn) throw new Error('Built-in categories cannot be deleted');
@@ -115,6 +142,9 @@ export const categoryRepository = {
           [remaining[0] ?? null, remaining.length === 0 ? null : JSON.stringify(remaining), new Date().toISOString(), budget.id],
         );
       }
+      const own = await db.getFirstAsync<{ parentId: number | null }>('SELECT parentId FROM categories WHERE id = ?', [id]);
+      const newParent = own?.parentId != null && own.parentId !== id ? own.parentId : null;
+      await db.runAsync('UPDATE categories SET parentId = ? WHERE parentId = ?', [newParent, id]);
       await db.runAsync('DELETE FROM categories WHERE id = ?', [id]);
       await db.runAsync('DELETE FROM receiver_category_mappings WHERE categoryId = ?', [id]);
     });

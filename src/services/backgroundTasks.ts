@@ -4,11 +4,12 @@ import * as TaskManager from 'expo-task-manager';
 import { Platform } from 'react-native';
 import { addDays, nextPeriodStart, periodStart, sameDay, startOfWeek, type CalendarKind } from '../utils/periodUtils';
 import { checkAndNotifyBudgetAlerts } from './budgetAlert';
+import { runScheduledD1Sync } from './d1Sync';
 import { runScheduledDriveBackup } from './driveSync';
 import { handleNotificationResponse, notificationService } from './notifications';
 import { notificationSettings, type TimeOfDay } from './notificationSettings';
 import { PrefKeys, prefs } from './prefs';
-import { registerSmsHeadlessTask, smsService } from './smsService';
+import { prepareBackgroundRuntime, registerSmsHeadlessTask, smsService } from './smsService';
 import { spendingSummary } from './spendingSummary';
 
 export const PERIODIC_TASK = 'totals-periodic-refresh';
@@ -79,6 +80,12 @@ async function sendSpendingSummariesIfDue(now: Date): Promise<void> {
 
 /** Same work the Flutter workmanager callback did for the daily summary task. */
 export async function runPeriodicWork(now = new Date()): Promise<void> {
+  // The OS may start this task in a runtime where App never booted (no channels, no DB yet).
+  try {
+    await prepareBackgroundRuntime();
+  } catch (error) {
+    if (__DEV__) console.warn('debug: Background runtime setup failed', error);
+  }
   await syncMissedBankSmsBestEffort();
   try {
     await sendSpendingSummariesIfDue(now);
@@ -94,6 +101,11 @@ export async function runPeriodicWork(now = new Date()): Promise<void> {
     await runScheduledDriveBackup(now);
   } catch (error) {
     if (__DEV__) console.warn('debug: Scheduled Drive backup failed', error);
+  }
+  try {
+    await runScheduledD1Sync(now);
+  } catch (error) {
+    if (__DEV__) console.warn('debug: Scheduled D1 sync failed', error);
   }
 }
 

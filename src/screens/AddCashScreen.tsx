@@ -5,6 +5,7 @@ import { DateField } from '../components/dateRange';
 import { PickWithdrawalSheet } from '../components/splits';
 import { Button, Card, Chip, ListRow, Screen, SectionTitle, SegmentedControl, TextField, styles as ui } from '../components/ui';
 import { isManagedCategory } from '../models/category';
+import { categoryPickerItems } from '../utils/categoryTree';
 import { makeTransaction } from '../models/transaction';
 import type { StackScreenProps } from '../navigation/types';
 import { cashLinkRepository } from '../repositories/cashLinkRepository';
@@ -36,7 +37,7 @@ export function AddCashScreen({ route, navigation }: StackScreenProps<'AddCash'>
 
   const flow = type === 'CREDIT' ? 'income' : 'expense';
   // Loan/debt, repayment and reimbursement links need the transaction detail flow, so they are picked after saving.
-  const flowCategories = categories.filter((c) => c.flow === flow && c.id != null && !isManagedCategory(c));
+  const flowCategories = categoryPickerItems(categories, (c) => c.flow === flow && !isManagedCategory(c));
   const parsedAmount = parseAmountInput(amount);
   const amountError = amount.trim() && (parsedAmount === null || parsedAmount <= 0) ? 'Enter a positive amount' : null;
   const parsedDate = parseDateInput(date);
@@ -157,8 +158,8 @@ export function AddCashScreen({ route, navigation }: StackScreenProps<'AddCash'>
       <SectionTitle title="Category" />
       <Card>
         <View style={ui.rowWrap}>
-          {flowCategories.map((c) => (
-            <Chip key={c.id!} label={c.name} selected={categoryIds.includes(c.id!)} onPress={() => toggleCategory(c.id!)} />
+          {flowCategories.map(({ category: c, label }) => (
+            <Chip key={c.id} label={label} selected={categoryIds.includes(c.id)} onPress={() => toggleCategory(c.id)} />
           ))}
         </View>
         <Text style={{ color: colors.textMuted, fontSize: 12, marginTop: spacing.sm }}>

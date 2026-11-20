@@ -1,3 +1,4 @@
+import type { SQLiteDatabase } from 'expo-sqlite';
 import { getDb } from '../db/database';
 import type { TransactionSourceSms } from '../models/misc';
 
@@ -11,6 +12,44 @@ function fromDb(row: Record<string, any>): TransactionSourceSms {
     receivedAt: row.receivedAt ?? null,
     messageId: row.messageId ?? null,
   };
+}
+
+function normalizeSourceSms(messages: Iterable<TransactionSourceSms>): TransactionSourceSms[] {
+  const normalized = new Map<string, TransactionSourceSms>();
+  for (const m of messages) {
+    const reference = m.transactionReference.trim();
+    if (!reference || !m.body.trim()) continue;
+    // Last one wins, like a sequence of INSERT OR REPLACE.
+    normalized.delete(reference);
+    normalized.set(reference, {
+      transactionReference: reference,
+      body: m.body,
+      senderAddress: m.senderAddress?.trim() ?? null,
+      receivedAt: m.receivedAt ?? null,
+      messageId: m.messageId?.trim() ?? null,
+    });
+  }
+  return [...normalized.values()];
+}
+
+/**
+ * Upserts raw SMS rows with the caller's connection and without opening a transaction,
+ * so it can run inside a larger import transaction.
+ */
+export async function upsertSourceSmsRows(db: SQLiteDatabase, messages: Iterable<TransactionSourceSms>): Promise<void> {
+  const rows = normalizeSourceSms(messages);
+  if (rows.length === 0) return;
+  const statement = await db.prepareAsync(
+    `INSERT OR REPLACE INTO transaction_source_sms (transactionReference, body, senderAddress, receivedAt, messageId)
+     VALUES (?, ?, ?, ?, ?)`,
+  );
+  try {
+    for (const m of rows) {
+      await statement.executeAsync([m.transactionReference, m.body, m.senderAddress ?? null, m.receivedAt ?? null, m.messageId ?? null]);
+    }
+  } finally {
+    await statement.finalizeAsync();
+  }
 }
 
 export const sourceSmsRepository = {
@@ -47,29 +86,10 @@ export const sourceSmsRepository = {
   },
 
   async upsertAll(messages: Iterable<TransactionSourceSms>): Promise<void> {
-    const normalized = new Map<string, TransactionSourceSms>();
-    for (const m of messages) {
-      const reference = m.transactionReference.trim();
-      if (!reference || !m.body.trim()) continue;
-      normalized.set(reference, {
-        transactionReference: reference,
-        body: m.body,
-        senderAddress: m.senderAddress?.trim() ?? null,
-        receivedAt: m.receivedAt ?? null,
-        messageId: m.messageId?.trim() ?? null,
-      });
-    }
-    if (normalized.size === 0) return;
+    const normalized = normalizeSourceSms(messages);
+    if (normalized.length === 0) return;
     const db = await getDb();
-    await db.withTransactionAsync(async () => {
-      for (const m of normalized.values()) {
-        await db.runAsync(
-          `INSERT OR REPLACE INTO transaction_source_sms (transactionReference, body, senderAddress, receivedAt, messageId)
-           VALUES (?, ?, ?, ?, ?)`,
-          [m.transactionReference, m.body, m.senderAddress ?? null, m.receivedAt ?? null, m.messageId ?? null],
-        );
-      }
-    });
+    await db.withTransactionAsync(() => upsertSourceSmsRows(db, normalized));
   },
 
   async getAll(): Promise<TransactionSourceSms[]> {

@@ -12,6 +12,8 @@ export interface Category {
   recurring: boolean;
   builtIn: boolean;
   builtInKey?: string | null;
+  /** Parent category (same flow) when this is a subcategory; null for a top-level category. */
+  parentId?: number | null;
 }
 
 export function normalizeFlow(raw: string | null | undefined): CategoryFlow {
@@ -38,7 +40,14 @@ export function categoryFromDb(row: Record<string, any>): Category {
     recurring: row.recurring === 1 || row.recurring === true,
     builtIn: row.builtIn === 1 || row.builtIn === true,
     builtInKey: row.builtInKey ?? null,
+    parentId: parseParentId(row.parentId),
   };
+}
+
+function parseParentId(raw: unknown): number | null {
+  if (raw == null || raw === '') return null;
+  const n = Number(raw);
+  return Number.isInteger(n) && n > 0 ? n : null;
 }
 
 export function categoryToDb(category: Category): Record<string, unknown> {
@@ -53,6 +62,7 @@ export function categoryToDb(category: Category): Record<string, unknown> {
     recurring: category.recurring ? 1 : 0,
     builtIn: category.builtIn ? 1 : 0,
     builtInKey: category.builtInKey ?? null,
+    parentId: category.parentId ?? null,
   };
 }
 
@@ -62,7 +72,7 @@ export function categoryTypeLabel(category: Category): string {
   return category.essential ? 'Essential' : 'Non-essential';
 }
 
-type BuiltIn = Omit<Category, 'id' | 'colorKey' | 'builtIn'> & { builtInKey: string };
+type BuiltIn = Omit<Category, 'id' | 'colorKey' | 'builtIn' | 'parentId'> & { builtInKey: string };
 
 const b = (
   name: string,

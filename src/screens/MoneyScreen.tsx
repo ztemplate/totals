@@ -5,7 +5,7 @@ import { DateRangeSheet } from '../components/dateRange';
 import { AmountText, CategoryIcon, counterpartyOf, groupByDay } from '../components/finance';
 import { ExpandableTransactionRow } from '../components/transactionActions';
 import { Card, Chip, EmptyState, IconButton, Icon, ListRow, SegmentedControl, Sheet, TextField } from '../components/ui';
-import { isReimbursementCategory, type Category } from '../models/category';
+import { isReimbursementCategory } from '../models/category';
 import { selectedCategoryIds, txDate, type Transaction } from '../models/transaction';
 import { useAppNavigation, type TabParamList } from '../navigation/types';
 import { smsService } from '../services/smsService';
@@ -18,6 +18,7 @@ import { formatRange, isInRange, type DateRange } from '../utils/dateRange';
 import { formatMonth, relativeDayLabel } from '../utils/format';
 import { isWithin, nextPeriodStart, periodEndInclusive, periodStart, previousPeriodStart } from '../utils/periodUtils';
 import { transactionIncomeAmount, transactionNetExpenseAmount } from '../utils/transactionAmounts';
+import { categoryPickerItems, expandWithDescendants } from '../utils/categoryTree';
 import { transactionTouchesCategory } from '../utils/transactionSplits';
 import { TrackedAccounts } from './AccountsScreens';
 import { PeopleList } from './PeopleScreens';
@@ -128,17 +129,20 @@ export function MoneyScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scoped, selfTransferReferences, selfCategoryIds, reimbursedByExpense, categoriesById]);
 
+  // A major category's filter also shows its subcategories' transactions.
+  const filterIds = useMemo(
+    () =>
+      categoryFilter !== null && categoryFilter !== UNCATEGORIZED ? [...expandWithDescendants(categories, [categoryFilter])] : null,
+    [categories, categoryFilter],
+  );
+
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
     return scoped.filter((tx) => {
       if (flow === 'income' && tx.type !== 'CREDIT') return false;
       if (flow === 'expense' && tx.type !== 'DEBIT') return false;
       if (categoryFilter === UNCATEGORIZED && selectedCategoryIds(tx).length > 0) return false;
-      if (
-        categoryFilter !== null &&
-        categoryFilter !== UNCATEGORIZED &&
-        !transactionTouchesCategory(tx, splitsByParent.get(tx.reference), categoryFilter)
-      ) {
+      if (filterIds && !filterIds.some((id) => transactionTouchesCategory(tx, splitsByParent.get(tx.reference), id))) {
         return false;
       }
       if (!q) return true;
@@ -148,7 +152,7 @@ export function MoneyScreen() {
         .toLowerCase();
       return haystack.includes(q);
     });
-  }, [scoped, flow, categoryFilter, query, splitsByParent]);
+  }, [scoped, flow, categoryFilter, filterIds, query, splitsByParent]);
 
   const sections = useMemo(() => groupByDay(visible), [visible]);
   const selectedCategory = categoryFilter !== null && categoryFilter !== UNCATEGORIZED ? categoriesById.get(categoryFilter) : null;
@@ -381,16 +385,15 @@ export function MoneyScreen() {
         {(['expense', 'income'] as const).map((f) => (
           <View key={f}>
             <Text style={[styles.sheetGroup, { color: colors.textSecondary }]}>{f === 'expense' ? 'EXPENSE' : 'INCOME'}</Text>
-            {categories
-              .filter((c: Category) => c.flow === f && c.id != null)
-              .map((c) => (
+            {categoryPickerItems(categories, (c) => c.flow === f)
+              .map(({ category: c, label }) => (
                 <ListRow
-                  key={c.id!}
-                  title={c.name}
+                  key={c.id}
+                  title={label}
                   left={<CategoryIcon category={c} size={32} />}
                   right={categoryFilter === c.id ? <Icon name="check" color={colors.primary} /> : null}
                   onPress={() => {
-                    setCategoryFilter(c.id!);
+                    setCategoryFilter(c.id);
                     setCategorySheet(false);
                   }}
                 />

@@ -1,5 +1,5 @@
 /**
- * Backups in the hidden app folder (appDataFolder) of the user's own Google Drive. Only the
+ * Backups and device-to-device sync through the hidden app folder (appDataFolder) of the user's own Google Drive. Only the
  * drive.appdata scope is requested, so the app cannot see any other Drive file and no server of
  * ours is involved. Sign-in is OAuth 2.0 with PKCE in the system browser; the OAuth client ID is
  * the user's own (see README), the refresh token lives in SecureStore.
@@ -23,6 +23,16 @@ import { BACKUP_SCHEMA_VERSION, buildExportJson, importBackupJson, type ImportSu
 import { PrefKeys, prefs } from './prefs';
 
 export type DriveAutoBackup = 'off' | 'daily' | 'weekly';
+/** When to sync automatically (besides the periodic background task, which runs whenever this isn't off). */
+export type DriveAutoSync = 'off' | 'open' | 'changes';
+
+export interface DriveSyncResult {
+  at: string;
+  /** Devices whose newest snapshot was merged in. */
+  importedFrom: string[];
+  imported: ImportSummary | null;
+  uploaded: boolean;
+}
 
 export interface DriveBackupState {
   /** OAuth client ID from the user's Google Cloud project. */
@@ -33,6 +43,12 @@ export interface DriveBackupState {
   autoBackup: DriveAutoBackup;
   lastBackupAt: string | null;
   lastError: string | null;
+  autoSync: DriveAutoSync;
+  lastSyncAt: string | null;
+  lastSyncResult: DriveSyncResult | null;
+  lastSyncError: string | null;
+  /** deviceId -> id of the newest snapshot of that device already merged here. */
+  importedFiles: Record<string, string>;
 }
 
 export interface DriveBackupFile {
@@ -42,6 +58,9 @@ export interface DriveBackupFile {
   createdTime: string | null;
   schemaVersion: number;
   sha256: string | null;
+  /** Install that made the snapshot; null for backups from before sync existed. */
+  deviceId: string | null;
+  deviceName: string | null;
 }
 
 export const DRIVE_KEEP_OPTIONS = [3, 5, 10, 20];
@@ -53,6 +72,11 @@ const DEFAULT_STATE: DriveBackupState = {
   autoBackup: 'off',
   lastBackupAt: null,
   lastError: null,
+  autoSync: 'off',
+  lastSyncAt: null,
+  lastSyncResult: null,
+  lastSyncError: null,
+  importedFiles: {},
 };
 const REFRESH_TOKEN_KEY = 'google_drive_refresh_token';
 const BACKUP_FORMAT = 'hisab-backup';
@@ -62,6 +86,7 @@ const FILE_FIELDS = 'id,name,size,createdTime,appProperties';
 const TIMEOUT_MS = 60_000;
 
 let cachedToken: { value: string; expiresAt: number } | null = null;
+let syncInFlight: Promise<DriveSyncResult> | null = null;
 
 export class DriveError extends Error {
   constructor(
@@ -106,6 +131,24 @@ export function setDriveKeepCount(keepCount: number): Promise<DriveBackupState> 
 
 export function setDriveAutoBackup(autoBackup: DriveAutoBackup): Promise<DriveBackupState> {
   return updateState({ autoBackup });
+}
+
+export function setDriveAutoSync(autoSync: DriveAutoSync): Promise<DriveBackupState> {
+  return updateState({ autoSync });
+}
+
+/** Stable id of this install, shared by Drive and D1 sync to tell devices apart. */
+export async function getSyncDeviceId(): Promise<string> {
+  const saved = await prefs.getString(PrefKeys.syncDeviceId);
+  if (saved) return saved;
+  const id = randomString().slice(0, 32);
+  await prefs.setString(PrefKeys.syncDeviceId, id);
+  return id;
+}
+
+export function syncDeviceName(): string {
+  const name = (Constants.deviceName ?? '').trim();
+  return (name || 'Android phone').slice(0, 30);
 }
 
 function randomString(): string {
@@ -265,6 +308,8 @@ function fileFromJson(json: Record<string, any>): DriveBackupFile | null {
     createdTime: props.createdAt || json.createdTime || null,
     schemaVersion: Number(props.schemaVersion) || 0,
     sha256: props.sha256 || null,
+    deviceId: props.deviceId || null,
+    deviceName: props.deviceName || null,
   };
 }
 
@@ -302,9 +347,21 @@ export async function deleteDriveBackup(id: string): Promise<void> {
   await deleteDriveFile(id);
 }
 
-function backupName(date: Date): string {
+function backupName(date: Date, deviceId: string): string {
   const pad = (n: number) => String(n).padStart(2, '0');
-  return `hisab_backup_${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}_${pad(date.getHours())}${pad(date.getMinutes())}${pad(date.getSeconds())}.json`;
+  return `hisab_backup_${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}_${pad(date.getHours())}${pad(date.getMinutes())}${pad(date.getSeconds())}_${deviceId.slice(0, 8)}.json`;
+}
+
+/** Keep-count pruning that never removes the newest snapshot of a device, so others can still sync from it. */
+function filesToPrune(files: DriveBackupFile[], keepCount: number): DriveBackupFile[] {
+  const newestPerDevice = new Set<string>();
+  const seen = new Set<string>();
+  for (const file of [...files].sort((a, b) => Date.parse(b.createdTime ?? '') - Date.parse(a.createdTime ?? ''))) {
+    if (!file.deviceId || seen.has(file.deviceId)) continue;
+    seen.add(file.deviceId);
+    newestPerDevice.add(file.id);
+  }
+  return backupsToPrune(files, keepCount).filter((file) => !newestPerDevice.has(file.id));
 }
 
 /** Uploads a full export and deletes backups beyond the keep count. */
@@ -313,8 +370,9 @@ export async function backUpToDrive(): Promise<DriveBackupFile> {
     const state = await getDriveState();
     const json = await buildExportJson();
     const createdAt = new Date();
+    const deviceId = await getSyncDeviceId();
     const metadata = {
-      name: backupName(createdAt),
+      name: backupName(createdAt, deviceId),
       parents: ['appDataFolder'],
       mimeType: 'application/json',
       appProperties: {
@@ -322,6 +380,8 @@ export async function backUpToDrive(): Promise<DriveBackupFile> {
         schemaVersion: String(BACKUP_SCHEMA_VERSION),
         createdAt: createdAt.toISOString(),
         sha256: toHex(sha256(utf8Bytes(json))),
+        deviceId,
+        deviceName: syncDeviceName(),
       },
     };
     const boundary = `hisab_${randomString().slice(0, 24)}`;
@@ -338,7 +398,7 @@ export async function backUpToDrive(): Promise<DriveBackupFile> {
 
     try {
       const existing = await listDriveBackups();
-      for (const old of backupsToPrune(existing, state.keepCount)) await deleteDriveFile(old.id);
+      for (const old of filesToPrune(existing, state.keepCount)) await deleteDriveFile(old.id);
     } catch (error) {
       if (__DEV__) console.warn('debug: Could not prune old Drive backups', error);
     }
@@ -360,10 +420,90 @@ export async function restoreFromDrive(file: DriveBackupFile): Promise<ImportSum
   return importBackupJson(json);
 }
 
-/** Called from the periodic background task. */
+async function doSync(): Promise<DriveSyncResult> {
+  try {
+    const deviceId = await getSyncDeviceId();
+    const state = await getDriveState();
+    const files = await listDriveBackups();
+    // Newest snapshot of each other device (files are newest first) that hasn't been merged yet.
+    const newest = new Map<string, DriveBackupFile>();
+    for (const file of files) {
+      if (file.deviceId && file.deviceId !== deviceId && !newest.has(file.deviceId)) newest.set(file.deviceId, file);
+    }
+    const importedFiles = { ...state.importedFiles };
+    const importedFrom: string[] = [];
+    let imported: ImportSummary | null = null;
+    for (const file of [...newest.values()].reverse()) {
+      if (importedFiles[file.deviceId!] === file.id) continue;
+      const summary = await restoreFromDrive(file);
+      imported = imported
+        ? {
+            accounts: imported.accounts + summary.accounts,
+            transactions: imported.transactions + summary.transactions,
+            budgets: imported.budgets + summary.budgets,
+            categories: imported.categories + summary.categories,
+          }
+        : summary;
+      importedFiles[file.deviceId!] = file.id;
+      importedFrom.push(file.deviceName || file.deviceId!.slice(0, 8));
+      // Save after each merge so a failure later doesn't merge the same file again.
+      await updateState({ importedFiles });
+    }
+    await backUpToDrive();
+    const result: DriveSyncResult = { at: new Date().toISOString(), importedFrom, imported, uploaded: true };
+    await updateState({ lastSyncAt: result.at, lastSyncResult: result, lastSyncError: null });
+    return result;
+  } catch (error) {
+    await updateState({ lastSyncError: error instanceof Error ? error.message : String(error) });
+    throw error;
+  }
+}
+
+/**
+ * Sync with other devices: merge the newest snapshot each other device left in Drive (merge-only,
+ * like an import: nothing local is overwritten or deleted), then upload a fresh snapshot of this
+ * device and prune old ones.
+ */
+export function syncWithDrive(): Promise<DriveSyncResult> {
+  if (!syncInFlight) {
+    syncInFlight = doSync().finally(() => {
+      syncInFlight = null;
+    });
+  }
+  return syncInFlight;
+}
+
+export function isDriveSyncRunning(): boolean {
+  return syncInFlight !== null;
+}
+
+const AUTO_SYNC_MIN_GAP_MS = 10 * 60 * 1000;
+const BACKGROUND_SYNC_GAP_MS = 6 * 60 * 60 * 1000;
+
+/** Automatic sync on app open or after changes; throttled. Returns true when a sync ran. */
+export async function runAutoDriveSync(trigger: 'open' | 'changes', now = Date.now()): Promise<boolean> {
+  const state = await getDriveState();
+  if (!state.connected || !state.clientId || state.autoSync === 'off') return false;
+  if (trigger === 'changes' && state.autoSync !== 'changes') return false;
+  const last = state.lastSyncAt ? Date.parse(state.lastSyncAt) : 0;
+  if (Number.isFinite(last) && now - last < AUTO_SYNC_MIN_GAP_MS) return false;
+  await syncWithDrive();
+  return true;
+}
+
+/** Called from the periodic background task: sync (when auto sync is on) and scheduled backups. */
 export async function runScheduledDriveBackup(now = new Date()): Promise<boolean> {
   const state = await getDriveState();
-  if (state.autoBackup === 'off' || !state.connected || !state.clientId) return false;
+  if (!state.connected || !state.clientId) return false;
+  if (state.autoSync !== 'off') {
+    const lastSync = state.lastSyncAt ? Date.parse(state.lastSyncAt) : 0;
+    if (!Number.isFinite(lastSync) || now.getTime() - lastSync >= BACKGROUND_SYNC_GAP_MS) {
+      // A sync uploads a snapshot too, which also counts as the scheduled backup below.
+      await syncWithDrive();
+      return true;
+    }
+  }
+  if (state.autoBackup === 'off') return false;
   const last = state.lastBackupAt ? Date.parse(state.lastBackupAt) : 0;
   const interval = (state.autoBackup === 'daily' ? 1 : 7) * 24 * 60 * 60 * 1000;
   // A little slack so a task that fires slightly early still counts the period as due.

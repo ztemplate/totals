@@ -592,7 +592,7 @@ function PersonDetailsSection(props: {
             key={alias.id}
             icon="phone"
             title={alias.identifier}
-            subtitle="Phone · tap to copy"
+            subtitle={`${bankById(banksWithCash, alias.bankId)?.shortName ?? 'Phone'} · tap to copy`}
             onPress={() => copyValue('Phone number', alias.identifier)}
             onLongPress={() => props.onRemoveAlias(alias)}
             right={removeIcon(alias)}
@@ -810,6 +810,15 @@ export function PersonDetailScreen({ route, navigation }: StackScreenProps<'Pers
       </Card>
 
       <PersonDetailsSection person={person} aliases={aliases} onEdit={() => setEditing(true)} onRemoveAlias={(a) => void removeAlias(a)} />
+      <Card style={{ paddingVertical: spacing.xs }}>
+        <ListRow
+          icon="account-balance"
+          title="Accounts"
+          subtitle={`Their accounts and wallets found in your SMS (${aliases.filter((a) => a.kind !== 'name').length} saved numbers)`}
+          chevron
+          onPress={() => navigation.navigate('ParsedAccounts', { personId })}
+        />
+      </Card>
 
       <SectionTitle title="Names in messages" />
       <Card style={{ gap: spacing.xs }}>

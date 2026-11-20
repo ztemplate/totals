@@ -29,15 +29,17 @@ import {
 } from '../utils/splitDrafts';
 import { equalSplit, remainingAmount, roundMoney, splitTotal } from '../utils/transactionSplits';
 import { confirm, showError } from './dialogs';
+import { categoryPath, categoryPickerItems } from '../utils/categoryTree';
 import { CategoryIcon, counterpartyOf } from './finance';
 import { PersonAvatar, PersonChooser } from './people';
 import { Button, Card, Chip, Divider, Icon, ListRow, Pill, ProgressBar, SectionTitle, Sheet, TextField, styles as ui } from './ui';
 
 const EPSILON = 0.005;
 
+/** Categories a part can go to, parents followed by their subcategories. */
 function splitFlowCategories(categories: Category[], tx: Transaction): Category[] {
   const flow = isCredit(tx) ? 'income' : 'expense';
-  return categories.filter((c) => c.flow === flow && c.id != null && !isManagedCategory(c));
+  return categoryPickerItems(categories, (c) => c.flow === flow && !isManagedCategory(c)).map((i) => i.category);
 }
 
 // ------------------------------------------------------------------ split section
@@ -423,6 +425,7 @@ function SplitEntryCard(props: {
   const { row, person } = props;
   const amount = parseAmountInput(row.amount);
   const amountError = row.amount.trim() && (amount === null || amount <= 0) ? 'Enter a positive amount' : null;
+  const allCategories = useData((s) => s.categories);
   const category = props.categories.find((c) => c.id === row.categoryId) ?? null;
   const mine = row.personId == null;
   const showNote = props.panel === 'note' || !!row.note;
@@ -470,7 +473,7 @@ function SplitEntryCard(props: {
           {props.categories.map((c) => (
             <Chip
               key={c.id!}
-              label={c.name}
+              label={categoryPath(allCategories, c)}
               selected={row.categoryId === c.id}
               onPress={() => {
                 props.onChange({ categoryId: row.categoryId === c.id ? null : c.id! });

@@ -38,6 +38,7 @@ import { autoCategorization } from '../services/autoCategorization';
 import { loadLoanDebtItems, type LoanDebtItem } from '../services/loanDebtSummary';
 import { notifyDataChanged, useData } from '../store/dataStore';
 import { useSettings, useTheme } from '../store/settingsStore';
+import { categoryPickerItems } from '../utils/categoryTree';
 import { spacing } from '../theme/colors';
 import { atmWithdrawalReferences, isOpenableLink, withdrawalReferenceOf } from '../utils/cashPocket';
 import { addDays, parseDateInput, toDateInput } from '../utils/dates';
@@ -164,7 +165,7 @@ export function TransactionDetailScreen({ route, navigation }: StackScreenProps<
   const credit = isCredit(tx);
   const flow = credit ? 'income' : 'expense';
   const selected = selectedCategoryIds(tx);
-  const flowCategories = categories.filter((c) => c.flow === flow && c.id != null);
+  const flowCategories = categoryPickerItems(categories, (c) => c.flow === flow);
   const bank = bankById(banksWithCash, tx.bankId);
   const date = txDate(tx);
   const fees = transactionFeeAmount(tx);
@@ -458,11 +459,11 @@ export function TransactionDetailScreen({ route, navigation }: StackScreenProps<
         <SectionTitle title="Categories" />
         <Card>
           <View style={ui.rowWrap}>
-            {flowCategories.map((c) => (
+            {flowCategories.map(({ category: c, label }) => (
               <Chip
-                key={c.id!}
-                label={c.name}
-                selected={selected.includes(c.id!)}
+                key={c.id}
+                label={label}
+                selected={selected.includes(c.id)}
                 onPress={() => onToggleCategory(c)}
                 icon={selected[0] === c.id ? 'star' : undefined}
               />

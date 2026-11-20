@@ -14,9 +14,13 @@ import {
   listDriveBackups,
   restoreFromDrive,
   setDriveAutoBackup,
+  setDriveAutoSync,
   setDriveClientId,
   setDriveKeepCount,
+  syncWithDrive,
   type DriveAutoBackup,
+  type DriveAutoSync,
+  type DriveSyncResult,
   type DriveBackupFile,
   type DriveBackupState,
 } from '../services/driveSync';
@@ -24,13 +28,33 @@ import { useSettings, useTheme } from '../store/settingsStore';
 import { spacing } from '../theme/colors';
 import { formatDateTime } from '../utils/format';
 
-type Busy = 'connect' | 'backup' | 'list' | `restore:${string}` | `delete:${string}` | null;
+type Busy = 'connect' | 'backup' | 'sync' | 'list' | `restore:${string}` | `delete:${string}` | null;
 
 const AUTO_OPTIONS: { value: DriveAutoBackup; label: string }[] = [
   { value: 'off', label: 'Off' },
   { value: 'daily', label: 'Daily' },
   { value: 'weekly', label: 'Weekly' },
 ];
+
+const SYNC_OPTIONS: { value: DriveAutoSync; label: string }[] = [
+  { value: 'off', label: 'Off' },
+  { value: 'open', label: 'On app open' },
+  { value: 'changes', label: 'After changes' },
+];
+
+function describeSync(result: DriveSyncResult): string {
+  const parts: string[] = [];
+  if (result.imported && result.importedFrom.length > 0) {
+    const i = result.imported;
+    parts.push(
+      `Merged from ${result.importedFrom.join(', ')}: ${i.transactions} transactions, ${i.accounts} accounts, ${i.budgets} budgets, ${i.categories} categories added`,
+    );
+  } else {
+    parts.push('Nothing new from other devices');
+  }
+  if (result.uploaded) parts.push('this device uploaded');
+  return parts.join(' · ');
+}
 
 function formatSize(bytes: number): string {
   if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
@@ -125,6 +149,13 @@ export function DriveBackupScreen() {
       Alert.alert('Google Drive', 'Backup saved to your Google Drive.');
     });
 
+  const sync = () =>
+    void run('sync', 'Sync failed', async () => {
+      const result = await syncWithDrive();
+      setBackups(await listDriveBackups());
+      Alert.alert('Google Drive sync', describeSync(result));
+    });
+
   const restore = async (file: DriveBackupFile) => {
     const ok = await confirm(
       'Restore backup',
@@ -157,7 +188,8 @@ export function DriveBackupScreen() {
       <Card style={{ gap: spacing.sm }}>
         <Text style={[styles.body, { color: colors.textSecondary }]}>
           Backups go to a hidden app folder in your own Google Drive. The app can only see the files it created there, and no
-          other server is involved.
+          other server is involved. Sync merges the newest backup of each of your other devices into this one (nothing here is
+          overwritten or deleted), then uploads this device's data for them.
         </Text>
         {state.connected ? (
           <>
@@ -170,7 +202,15 @@ export function DriveBackupScreen() {
             />
             {state.lastError ? <Text style={{ color: colors.expense }}>{state.lastError}</Text> : null}
             <View style={[ui.rowWrap, { gap: spacing.sm }]}>
-              <Button title="Back up now" icon="cloud-upload" onPress={backUp} loading={busy === 'backup'} disabled={busy !== null} />
+              <Button title="Sync now" icon="sync" onPress={sync} loading={busy === 'sync'} disabled={busy !== null} />
+              <Button
+                title="Back up now"
+                icon="cloud-upload"
+                variant="secondary"
+                onPress={backUp}
+                loading={busy === 'backup'}
+                disabled={busy !== null}
+              />
               <Button title="Disconnect" variant="ghost" onPress={() => void disconnect()} disabled={busy !== null} />
             </View>
           </>
@@ -187,6 +227,26 @@ export function DriveBackupScreen() {
 
       {state.connected ? (
         <>
+          <SectionTitle title="Sync" />
+          <Card style={{ gap: spacing.sm }}>
+            <ListRow
+              title={state.lastSyncAt ? `Last sync ${formatDateTime(new Date(state.lastSyncAt), calendar)}` : 'Not synced yet'}
+              subtitle={state.lastSyncResult ? describeSync(state.lastSyncResult) : 'Tap Sync now to share data with your other devices.'}
+              icon="sync"
+            />
+            {state.lastSyncError ? <Text style={{ color: colors.expense }}>Last sync failed: {state.lastSyncError}</Text> : null}
+            <Text style={[styles.label, { color: colors.textSecondary }]}>Auto sync</Text>
+            <SegmentedControl
+              options={SYNC_OPTIONS}
+              value={state.autoSync}
+              onChange={(value) => void setDriveAutoSync(value).then(setState)}
+            />
+            <Text style={[styles.label, { color: colors.textMuted }]}>
+              When on, the app also syncs from the background task every few hours. "After changes" syncs a couple of minutes
+              after new data arrives (at most every 10 minutes).
+            </Text>
+          </Card>
+
           <SectionTitle title="Automatic backup" />
           <Card style={{ gap: spacing.md }}>
             <SegmentedControl
@@ -221,7 +281,7 @@ export function DriveBackupScreen() {
                 {index > 0 ? <Divider /> : null}
                 <ListRow
                   title={file.createdTime ? formatDateTime(new Date(file.createdTime), calendar) : file.name}
-                  subtitle={`${formatSize(file.size)} · schema v${file.schemaVersion || '?'} · tap to restore, hold to delete`}
+                  subtitle={`${file.deviceName ? `${file.deviceName} · ` : ''}${formatSize(file.size)} · schema v${file.schemaVersion || '?'} · tap to restore, hold to delete`}
                   icon="restore"
                   disabled={busy !== null}
                   onPress={() => void restore(file)}

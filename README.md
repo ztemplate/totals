@@ -37,6 +37,7 @@ After that, `bun start` runs Metro for the installed dev client.
   - **Unlabeled accounts.** Every bank message is parsed and saved once, even before you add an account. Messages no account claims are grouped into *unlabeled accounts*: by the account number printed in the SMS (masked forms are merged), or, for SIM banks like telebirr, by the SIM that received them. They're listed under Money → Accounts with the bank, message count and last balance. Label one and it becomes a normal account that claims its stored messages, with no re-parse. Adding an account by hand claims matching stored messages the same way.
   - **Scanning bank SMS.** Money → Accounts has a *Bank SMS* card. *Scan new messages* reads only what arrived since the last scan (shown on the card). *Date range* reads a chosen period. *Full re-scan* reads the whole inbox again. Already imported messages are skipped. After every scan the app re-checks which account owns each message and sets each account's balance from its newest message. *Recheck balances & owners* does that without reading the inbox.
   - **Which account a message belongs to.** When a message has both a greeting name ("Dear Abebe") and an account number, the account must match both. A message for someone else's account with the same visible digits stays unassigned and shows under *Unlabeled accounts*. If only one of the two is in the message, that one decides. If neither is, or several accounts still fit, the receiving SIM and then the default account decide. An account with no holder name is matched on its number. Editing an account's name or number re-checks its messages. An older balance never overwrites a newer one, so scanning an old date range is safe.
+  - **Parsed accounts** (Money → Accounts → *Parsed accounts*, or Settings) lists every account found in the parsed SMS: your registered accounts, unlabeled ones and, under *Counterparties*, the account and phone numbers you paid or were paid by. Each row shows the bank or wallet, the number as printed, the holder name, message count, last balance, first and last seen, and who it belongs to. Filter by *Banks* or *Providers* (SIM wallets such as telebirr and M-Pesa), by bank, by person or *Unassigned*, search, or group the list by person. Tap a row to pick or add its person (saved as that person's account or wallet number, so one person can own many accounts and their page lists them under Details and *Accounts*), open the account, label it, or read its messages with the original SMS text.
 - **Transactions**: home and money views, a transaction detail screen, adding cash transactions, and categorizing, editing and deleting transactions. Tapping a transaction in a list expands it with *Categorize*, *Split* and *Details* buttons. The Money tab has *Activity*, *Accounts* and *People* tabs at the top. Activity shows a month at a time, or any date range (presets or two taps on a calendar that follows the Ethiopian or Gregorian setting).
 - **Splitting a transaction** (expand a transaction → Split, or transaction detail → Split)
   - The editor is a list of entries with *Add entry* at the bottom. Each entry has an amount, a *Category* button and a *Person* button. The person defaults to *Me*; choosing someone else makes that part a loan to them (a debt, for money received). Whatever isn't split off stays with the parent's categories.
@@ -46,6 +47,8 @@ After that, `bun start` runs Metro for the installed dev client.
 - **Categories**
   - Comes with built-in expense and income categories. You can add your own with an icon, a colour and a description.
   - Categories can be flagged as essential, main income or recurring.
+  - Categories can be grouped: any category (built-ins too) can sit under a major category of the same flow, from the *Parent category* picker or *+* on a category in Settings → Categories, where they show as a collapsible tree. Deleting a parent moves its subcategories up a level. Pickers list subcategories under their parent as "Parent › Child".
+  - Budget → Categories shows totals per category for this month or year: each major category's total includes its subcategories, with each subcategory's own total beneath it. Filtering Money by a major category and budgets on a major category include its subcategories too.
 - **Auto categorization**
   - Learns counterparty → category rules separately for expenses and income. A rule can point to several categories, with one marked primary.
   - Asks you to categorize new counterparties. The prompt can be dismissed per counterparty, and you can manage rules and dismissals in Settings.
@@ -75,7 +78,10 @@ After that, `bun start` runs Metro for the installed dev client.
 - **App lock**: biometric or device-credential lock through `expo-local-authentication`.
 - **Backup**
   - Exports and imports a JSON backup through the share sheet and document picker. Backups include splits, cash links, people, people groups, planned items, expected income, assets and ways to earn. Settings also has a danger-zone reset.
-  - **Google Drive backup** (Settings → Google Drive backup) uploads the same backup to the hidden app-data folder of your own Drive. No server of ours is involved, and the app can't see any other Drive file. It supports backing up now, automatic daily or weekly backups from the background task, keeping the newest 3/5/10/20, and restore (verified by checksum, merged like an import) or delete.
+  - **Google Drive sync** (Settings → Google Drive sync) uploads the same backup to the hidden app-data folder of your own Drive. No server of ours is involved, and the app can't see any other Drive file. It supports backing up now, automatic daily or weekly backups from the background task, keeping the newest 3/5/10/20, and restore (verified by checksum, merged like an import) or delete.
+    - *Sync now* syncs devices that share the Drive account. Each snapshot records a per-install device id and name in its Drive `appProperties`. Sync downloads the newest snapshot of every other device that hasn't been merged yet, merges it like an import, uploads a fresh snapshot of this device and prunes to the keep count. Pruning never removes a device's newest snapshot. Merging only adds data and skips duplicates. Nothing local is overwritten or deleted, and edits or deletions of records the other device already has don't carry over.
+    - *Auto sync* can be off, *on app open*, or *after changes* (debounced by about 2 minutes, at most every 10 minutes, and also when the app returns to the foreground). When it's on, the background task also syncs every 6 hours or so. The screen shows the last sync time, what was merged, and the last error.
+  - **Cloudflare D1 sync** (Settings → Cloudflare D1 sync) syncs devices through a D1 database in your own Cloudflare account. See [Cloudflare D1 setup](#cloudflare-d1-setup).
 - **Appearance**: light, dark or system theme, and a choice of calendar. On the Ethiopian calendar everything follows it: month navigation and labels (Meskerem, Tikimt, …, Pagume with its 5 or 6 days), monthly spending on Home, budgets, monthly summary notifications, people insights, yearly income and every date picker.
 
 ## Google Drive setup
@@ -85,9 +91,25 @@ Drive sign-in uses an OAuth client from **your own** Google Cloud project, so no
 1. Create a project at <https://console.cloud.google.com> and enable the **Google Drive API**.
 2. Configure the OAuth consent screen. Add the scope `https://www.googleapis.com/auth/drive.appdata` and add yourself as a test user (or publish the app).
 3. Create an OAuth client ID of type **Android**: package `com.hisab.budget`, plus the SHA-1 of the key that signs your build. For debug builds, run `keytool -list -v -keystore android/app/debug.keystore -alias androiddebugkey -storepass android -keypass android`.
-4. In the app, open Settings → Google Drive backup, paste the client ID and tap *Connect Google Drive*. The redirect URI is `com.hisab.budget:/oauth2redirect`.
+4. In the app, open Settings → Google Drive sync, paste the client ID and tap *Connect Google Drive*. The redirect URI is `com.hisab.budget:/oauth2redirect`.
 
 The redirect uses the `com.hisab.budget` URL scheme (in `app.json` and `AndroidManifest.xml`), so rebuild the native app once with `bunx expo run:android` after updating.
+
+## Cloudflare D1 setup
+
+1. In the Cloudflare dashboard, open **Storage & Databases → D1** and create a database. Copy its **database ID**.
+2. Copy your **account ID** from the account home page or the dashboard URL.
+3. Under **My Profile → API Tokens**, create a custom token with the permission **Account → D1 → Edit**, scoped to that account.
+4. In the app, open Settings → Cloudflare D1 sync. Enter the account ID and database ID, then paste and save the token, which is stored in `expo-secure-store`. Tap *Test connection*. It runs `SELECT 1` and creates the tables.
+5. Tap *Sync now*, or turn on *Auto sync* to sync when the app opens and from the background task (about hourly).
+
+How it works (`services/d1SyncCore.ts`, `services/d1Sync.ts`):
+
+- The app calls the D1 REST API directly: `POST https://api.cloudflare.com/client/v4/accounts/{account_id}/d1/database/{database_id}/query` with `Authorization: Bearer <token>`. The body is `{ "sql", "params" }`, or `{ "batch": [{ "sql", "params" }, …] }` for several statements in one request.
+- There is one generic table: `hisab_records (profile, entity, record_key, data, updated_at, device_id, deleted)` with primary key `(profile, entity, record_key)`. `hisab_sync_meta` lists the devices that have synced. Every list in the backup JSON becomes records keyed by the natural keys the importer uses: transaction reference, category built-in key or name+flow, person name, and so on. Local ids of categories, people and splits are rewritten to ids derived from those keys, so data from different phones lines up.
+- *Profile* is a sync namespace. It defaults to the active profile's name. Phones using the same namespace share data, and one database can hold several namespaces.
+- Push uploads only records whose content hash changed since the last sync. Upserts are chunked to D1's 100 bound parameters per statement and batched per request. A small local table, `d1_sync_state`, remembers the hashes.
+- Pull reads rows from other devices since the last cursor (D1 server time), rebuilds a backup JSON and merges it with the normal import. The merge only adds data, so nothing local is overwritten. A record deleted on one phone becomes a tombstone: new devices don't receive it, and phones that already have it keep their copy. If most data vanishes at once, for example after *Delete all data*, those deletions are held back. *Full resync* re-uploads everything and pulls the whole namespace again.
 
 ## Layout
 
@@ -104,14 +126,15 @@ src/
   models/               types + JSON mapping (transaction, account, bank, category, smsPattern, …)
   repositories/         data access: accounts, banks, transactions, categories, profiles, people, failed parses, …
   services/             smsService, smsConfigService, autoCategorization, notifications,
-                        notificationSettings, appLock, backup, spendingSummary, backgroundTasks, dataChanged
+                        notificationSettings, appLock, backup, driveSync, d1Sync (+ d1SyncCore), cloudAutoSync,
+                        spendingSummary, backgroundTasks, dataChanged
   store/                zustand stores (dataStore, settingsStore)
   navigation/           typed routes and navigation helpers
   screens/              Home, Money, Budget (+ Planning), Shared, Accounts, AddCash, Loans, People, TransactionDetail, Settings…
   theme/                colours, spacing
   utils/                pattern parser, sender matching, person matching, duplicate detection, Ethiopian calendar, periods, formatting
 tests/                  bun unit tests (SMS parsing, sender matching, person matching, calendar/periods,
-                        splits, split editor entries, cash pockets, unlabeled accounts, account ownership, people analytics, planning, OAuth/PKCE)
+                        splits, split editor entries, cash pockets, unlabeled and parsed accounts, account ownership, people analytics, planning, OAuth/PKCE)
 ```
 
 ## Not ported (yet)

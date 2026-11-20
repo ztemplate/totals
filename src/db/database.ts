@@ -3,7 +3,7 @@ import { BUILT_IN_CATEGORIES } from '../models/category';
 import { BUNDLED_BANKS } from '../data/banks';
 
 export const DB_NAME = 'totals.db';
-export const SCHEMA_VERSION = 37;
+export const SCHEMA_VERSION = 40;
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS categories (
@@ -17,7 +17,8 @@ CREATE TABLE IF NOT EXISTS categories (
   flow TEXT NOT NULL DEFAULT 'expense',
   recurring INTEGER NOT NULL DEFAULT 0,
   builtIn INTEGER NOT NULL DEFAULT 0,
-  builtInKey TEXT
+  builtInKey TEXT,
+  parentId INTEGER
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_categories_name_flow ON categories(name COLLATE NOCASE, flow);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_categories_builtInKey ON categories(builtInKey) WHERE builtInKey IS NOT NULL;
@@ -429,6 +430,7 @@ const ADDED_COLUMNS: { table: string; column: string; definition: string }[] = [
   { table: 'people', column: 'telegram', definition: 'TEXT' },
   { table: 'people', column: 'email', definition: 'TEXT' },
   { table: 'people', column: 'address', definition: 'TEXT' },
+  { table: 'categories', column: 'parentId', definition: 'INTEGER' },
 ];
 
 async function addMissingColumns(db: SQLite.SQLiteDatabase): Promise<void> {
@@ -543,6 +545,7 @@ export async function resetDatabase(): Promise<void> {
       await db.runAsync(`DELETE FROM ${table}`);
     }
     await db.runAsync('DELETE FROM categories WHERE builtIn = 0');
+    await db.runAsync('UPDATE categories SET parentId = NULL');
     await seedBuiltInCategories(db);
   });
 }

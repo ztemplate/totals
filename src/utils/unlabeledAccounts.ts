@@ -81,15 +81,20 @@ export function detectUnlabeledAccounts(
 ): UnlabeledAccount[] {
   const banksById = new Map(banks.map((b) => [b.id, b]));
   const accountList = [...accounts];
+  const accountsByBank = new Map<number, Account[]>();
+  for (const account of accountList) {
+    const list = accountsByBank.get(account.bank) ?? [];
+    list.push(account);
+    accountsByBank.set(account.bank, list);
+  }
   const groupsByBank = new Map<number, UnlabeledAccount[]>();
+  // The decision only depends on these fields, and inboxes repeat them a lot: decide each once.
+  const decisions = new Map<string, UnlabeledAccount | null>();
 
-  for (const tx of transactions) {
-    const bankId = tx.bankId;
-    if (bankId == null || bankId === CASH_BANK_ID) continue;
-    const bank = banksById.get(bankId);
-    if (!bank) continue;
-    const bankAccounts = accountList.filter((a) => a.bank === bankId);
-    if (bankAccounts.length > 0 && resolveTransactionOwnership(tx, bank, accountList)) continue;
+  const decide = (tx: Transaction, bank: Bank): UnlabeledAccount | null => {
+    const bankId = bank.id;
+    const bankAccounts = accountsByBank.get(bankId) ?? [];
+    if (bankAccounts.length > 0 && resolveTransactionOwnership(tx, bank, bankAccounts)) return null;
 
     const sim = isSimBank(bank);
     // An owner left behind by a deleted account still names the account the message belongs to.
@@ -100,7 +105,7 @@ export function detectUnlabeledAccounts(
       // Only a number that matches none of the bank's accounts is evidence of another account, or
       // a message addressed to another person's account with the same visible digits.
       const contradicts = !sim && !!number && !bankAccounts.some((a) => accountNumbersMatch(bank, a.accountNumber, number));
-      if (!contradicts) continue;
+      if (!contradicts) return null;
     }
 
     const groups = groupsByBank.get(bankId) ?? [];
@@ -117,7 +122,27 @@ export function detectUnlabeledAccounts(
     }
     // Prefer an unmasked spelling of the number once one is seen.
     if (number && isMaskedAccountNumber(group.accountNumber) && !isMaskedAccountNumber(number)) group.accountNumber = number;
-    addTransaction(group, tx);
+    return group;
+  };
+
+  for (const tx of transactions) {
+    const bankId = tx.bankId;
+    if (bankId == null || bankId === CASH_BANK_ID) continue;
+    const bank = banksById.get(bankId);
+    if (!bank) continue;
+    const key = [
+      bankId,
+      tx.ownerAccountNumber ?? '',
+      isOwnershipConflict(tx) ? 1 : 0,
+      tx.accountNumber ?? '',
+      tx.sourceSubscriptionId ?? '',
+    ].join('\u0000');
+    let group = decisions.get(key);
+    if (group === undefined) {
+      group = decide(tx, bank);
+      decisions.set(key, group);
+    }
+    if (group) addTransaction(group, tx);
   }
 
   return [...groupsByBank.values()]

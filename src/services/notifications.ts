@@ -150,7 +150,8 @@ function startOfDay(d: Date): Date {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate());
 }
 
-let initialized = false;
+let initPromise: Promise<void> | null = null;
+let channelsPromise: Promise<void> | null = null;
 let responseSubscription: Notifications.EventSubscription | null = null;
 let lastHandledResponseKey: string | null = null;
 
@@ -378,19 +379,15 @@ export async function handleNotificationResponse(response: Notifications.Notific
   }
 }
 
-export const notificationService = {
-  async initialize(): Promise<void> {
-    if (initialized) return;
-    initialized = true;
-    Notifications.setNotificationHandler({
-      handleNotification: async () => ({
-        shouldShowBanner: true,
-        shouldShowList: true,
-        shouldPlaySound: true,
-        shouldSetBadge: false,
-      }),
-    });
-    if (Platform.OS === 'android') {
+/**
+ * Creates the Android channels once per runtime. A notification posted to a channel that
+ * does not exist is dropped by Android 8+, so every path that can post (including the
+ * headless SMS task and the background task, which never run initialize from App) calls this.
+ */
+function ensureChannels(): Promise<void> {
+  if (Platform.OS !== 'android') return Promise.resolve();
+  if (!channelsPromise) {
+    channelsPromise = (async () => {
       for (const channel of CHANNELS) {
         await Notifications.setNotificationChannelAsync(channel.id, {
           name: channel.name,
@@ -398,12 +395,86 @@ export const notificationService = {
           importance: channel.importance,
         });
       }
-    }
-    await ensureFailedParseCategory();
-    responseSubscription?.remove();
-    responseSubscription = Notifications.addNotificationResponseReceivedListener((response) => {
-      void handleNotificationResponse(response);
+    })().catch((error) => {
+      channelsPromise = null;
+      throw error;
     });
+  }
+  return channelsPromise;
+}
+
+const TRANSACTION_SUMMARY_ID = 9010;
+const NOTIFIED_REFERENCES_KEY = 'sms_notified_transaction_refs_v1';
+const NOTIFIED_REFERENCES_LIMIT = 500;
+
+export const notificationService = {
+  /**
+   * Sets the foreground handler (without it expo-notifications does not show anything while
+   * the app is open), the channels and the response listener. Safe to call from every runtime
+   * (app, headless SMS task, background task) and more than once; a failed attempt is retried.
+   */
+  initialize(): Promise<void> {
+    if (!initPromise) {
+      initPromise = (async () => {
+        Notifications.setNotificationHandler({
+          handleNotification: async () => ({
+            shouldShowBanner: true,
+            shouldShowList: true,
+            shouldPlaySound: true,
+            shouldSetBadge: false,
+          }),
+        });
+        responseSubscription?.remove();
+        responseSubscription = Notifications.addNotificationResponseReceivedListener((response) => {
+          void handleNotificationResponse(response);
+        });
+        await ensureChannels();
+        await ensureFailedParseCategory();
+      })().catch((error) => {
+        initPromise = null;
+        throw error;
+      });
+    }
+    return initPromise;
+  },
+
+  ensureChannels,
+
+  /** References whose transaction notification was already shown (or deliberately withheld). */
+  async getNotifiedTransactionReferences(): Promise<Set<string>> {
+    const stored = await prefs.getJson<unknown[]>(NOTIFIED_REFERENCES_KEY);
+    return new Set(Array.isArray(stored) ? stored.filter((v): v is string => typeof v === 'string') : []);
+  },
+
+  /** Remembers references so the live listener and catch-up scans notify each transaction once. */
+  async markTransactionsNotified(references: Iterable<string>): Promise<void> {
+    const add = [...new Set([...references].map((r) => r.trim()).filter(Boolean))];
+    if (add.length === 0) return;
+    try {
+      const stored = await prefs.getJson<unknown[]>(NOTIFIED_REFERENCES_KEY);
+      const previous = Array.isArray(stored) ? stored.filter((v): v is string => typeof v === 'string') : [];
+      const addSet = new Set(add);
+      const next = [...previous.filter((r) => !addSet.has(r)), ...add];
+      await prefs.setJson(NOTIFIED_REFERENCES_KEY, next.slice(-NOTIFIED_REFERENCES_LIMIT));
+    } catch (error) {
+      if (__DEV__) console.warn('debug: Could not record notified transactions', error);
+    }
+  },
+
+  /** One notification for transactions found by a catch-up scan beyond the individually shown ones. */
+  async showNewTransactionsSummary(params: { count: number }): Promise<void> {
+    try {
+      if (params.count <= 0) return;
+      if (!(await notificationSettings.isTransactionNotificationsEnabled())) return;
+      if (!(await hasPermission())) return;
+      await ensureChannels();
+      const title = 'New transactions';
+      const body = `${params.count} more new transaction${params.count === 1 ? '' : 's'} found in your bank messages.`;
+      await present({ id: TRANSACTION_SUMMARY_ID, channel: 'transactions', title, body, data: { payload: 'transactions' } });
+      await recordHistory({ channel: 'transactions', title, body });
+    } catch (error) {
+      if (__DEV__) console.warn('debug: Failed to show new transactions summary', error);
+    }
   },
 
   async requestPermissions(): Promise<boolean> {
@@ -456,6 +527,7 @@ export const notificationService = {
 
       const quick = await quickCategories(tx, needsInput ? 2 : 3, categories);
       const categoryIdentifier = await ensureTransactionCategory(needsInput, role, quick);
+      await ensureChannels();
       await present({
         id: transactionNotificationId(tx),
         channel: 'transactions',

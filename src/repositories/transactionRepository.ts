@@ -1,4 +1,6 @@
+import type { SQLiteDatabase } from 'expo-sqlite';
 import { getDb, type SqlValue } from '../db/database';
+import type { TransactionSourceSms } from '../models/misc';
 import { accountFromDb } from '../models/account';
 import { REIMBURSEMENT_KEY } from '../models/category';
 import {
@@ -14,6 +16,7 @@ import { registeredAccountNumbersMatch, transactionBelongsToAccount } from '../u
 import { CASH_BANK_ID } from '../utils/cashConstants';
 import { bankRepository } from './bankRepository';
 import { profileRepository } from './profileRepository';
+import { upsertSourceSmsRows } from './sourceSmsRepository';
 
 const MAX_SQL_VARS = 900;
 
@@ -126,6 +129,44 @@ async function applyAutoCategorization(tx: Transaction): Promise<Transaction> {
   });
   if (!selection || selection.categoryIds.length === 0) return tx;
   return makeTransaction({ ...tx, categoryId: selection.primaryCategoryId, categoryIds: selection.categoryIds });
+}
+
+async function applyOwnershipUpdate(
+  db: SQLiteDatabase,
+  u: TransactionOwnershipUpdate,
+  p: { sql: string; args: SqlValue[] },
+): Promise<boolean> {
+  const existing = await db.getFirstAsync<{ ownerAssignmentSource: string | null }>(
+    `SELECT ownerAssignmentSource FROM transactions WHERE reference = ?${p.sql} LIMIT 1`,
+    [u.reference, ...p.args],
+  );
+  if (!existing) return false;
+  if (existing.ownerAssignmentSource === OwnerAssignment.manual && u.ownerAssignmentSource !== OwnerAssignment.manual) {
+    return false;
+  }
+  const sets = ['ownerAccountNumber = ?'];
+  const args: SqlValue[] = [u.ownerAccountNumber];
+  if (u.ownerAssignmentSource != null) {
+    sets.push('ownerAssignmentSource = ?');
+    args.push(u.ownerAssignmentSource);
+  }
+  if (u.ownerAccountNumber === null) {
+    // Clearing a disproven owner must also clear its SIM shortcut.
+    sets.push('sourceSubscriptionId = NULL');
+  } else if (u.sourceSubscriptionId != null && u.sourceSubscriptionId >= 0) {
+    sets.push('sourceSubscriptionId = ?');
+    args.push(u.sourceSubscriptionId);
+  }
+  if (u.sourceMessageId?.trim()) {
+    sets.push('sourceMessageId = ?');
+    args.push(u.sourceMessageId.trim());
+  }
+  const result = await db.runAsync(`UPDATE transactions SET ${sets.join(', ')} WHERE reference = ?${p.sql}`, [
+    ...args,
+    u.reference,
+    ...p.args,
+  ]);
+  return result.changes > 0;
 }
 
 function profileFilter(profileId: number | null): { sql: string; args: SqlValue[] } {
@@ -347,40 +388,41 @@ export const transactionRepository = {
     let applied = 0;
     await db.withTransactionAsync(async () => {
       for (const u of deduped.values()) {
-        const existing = await db.getFirstAsync<{ ownerAssignmentSource: string | null }>(
-          `SELECT ownerAssignmentSource FROM transactions WHERE reference = ?${p.sql} LIMIT 1`,
-          [u.reference, ...p.args],
-        );
-        if (!existing) continue;
-        if (existing.ownerAssignmentSource === OwnerAssignment.manual && u.ownerAssignmentSource !== OwnerAssignment.manual) {
-          continue;
-        }
-        const sets = ['ownerAccountNumber = ?'];
-        const args: SqlValue[] = [u.ownerAccountNumber];
-        if (u.ownerAssignmentSource != null) {
-          sets.push('ownerAssignmentSource = ?');
-          args.push(u.ownerAssignmentSource);
-        }
-        if (u.ownerAccountNumber === null) {
-          // Clearing a disproven owner must also clear its SIM shortcut.
-          sets.push('sourceSubscriptionId = NULL');
-        } else if (u.sourceSubscriptionId != null && u.sourceSubscriptionId >= 0) {
-          sets.push('sourceSubscriptionId = ?');
-          args.push(u.sourceSubscriptionId);
-        }
-        if (u.sourceMessageId?.trim()) {
-          sets.push('sourceMessageId = ?');
-          args.push(u.sourceMessageId.trim());
-        }
-        const result = await db.runAsync(`UPDATE transactions SET ${sets.join(', ')} WHERE reference = ?${p.sql}`, [
-          ...args,
-          u.reference,
-          ...p.args,
-        ]);
-        if (result.changes > 0) applied++;
+        if (await applyOwnershipUpdate(db, u, p)) applied++;
       }
     });
     return applied;
+  },
+
+  /**
+   * Writes one batch of an SMS import in a single SQLite transaction: new rows (already
+   * auto-categorized, INSERT OR REPLACE like saveTransaction), then ownership updates in
+   * order, then the raw SMS text of every parsed message.
+   */
+  async saveSmsImportBatch(batch: {
+    transactions: Transaction[];
+    ownershipUpdates: TransactionOwnershipUpdate[];
+    sourceSms: TransactionSourceSms[];
+  }): Promise<void> {
+    if (batch.transactions.length === 0 && batch.ownershipUpdates.length === 0 && batch.sourceSms.length === 0) return;
+    const db = await getDb();
+    const profileId = await profileRepository.getActiveProfileId();
+    const p = profileFilter(profileId);
+    await db.withTransactionAsync(async () => {
+      if (batch.transactions.length > 0) {
+        const statement = await db.prepareAsync(INSERT_SQL('REPLACE'));
+        try {
+          for (const t of batch.transactions) {
+            const tx = makeTransaction(t);
+            await statement.executeAsync(rowValues(tx, tx.profileId ?? profileId));
+          }
+        } finally {
+          await statement.finalizeAsync();
+        }
+      }
+      for (const u of batch.ownershipUpdates) await applyOwnershipUpdate(db, u, p);
+      await upsertSourceSmsRows(db, batch.sourceSms);
+    });
   },
 
   async getTransactionsByDateRange(

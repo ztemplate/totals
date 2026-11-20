@@ -17,6 +17,7 @@ import { bankRepository } from '../repositories/bankRepository';
 import { budgetRepository } from '../repositories/budgetRepository';
 import { cashLinkRepository } from '../repositories/cashLinkRepository';
 import { categoryRepository } from '../repositories/categoryRepository';
+import { parentError } from '../utils/categoryTree';
 import { failedParseRepository } from '../repositories/failedParseRepository';
 import { loanDebtRepository, type LoanDebtRepaymentAllocation } from '../repositories/loanDebtRepository';
 import { peopleGroupRepository } from '../repositories/peopleGroupRepository';
@@ -91,6 +92,7 @@ function categoryToJson(category: Category): Json {
     recurring: category.recurring,
     builtIn: category.builtIn,
     builtInKey: category.builtInKey ?? null,
+    parentId: category.parentId ?? null,
   };
 }
 
@@ -329,6 +331,22 @@ async function importCategories(data: Json): Promise<{ idMap: Map<number, number
       }
     }
     if (exportId !== null && localId !== undefined) idMap.set(exportId, localId);
+  }
+
+  // Second pass: link subcategories once every category has a local id. A category that already has a
+  // parent here keeps it, and links that would mix flows or form a cycle are skipped.
+  const local = await categoryRepository.getCategories();
+  for (const json of raw) {
+    const exportId = asInt(json.id);
+    const exportParent = categoryFromDb(json).parentId ?? null;
+    if (exportId === null || exportParent === null) continue;
+    const childId = idMap.get(exportId);
+    const parentId = idMap.get(exportParent);
+    const child = local.find((c) => c.id === childId);
+    if (childId === undefined || parentId === undefined || !child || child.parentId != null) continue;
+    if (parentError(local, child, parentId) !== null) continue;
+    await db.runAsync('UPDATE categories SET parentId = ? WHERE id = ?', [parentId, childId]);
+    child.parentId = parentId;
   }
   return { idMap, inserted };
 }

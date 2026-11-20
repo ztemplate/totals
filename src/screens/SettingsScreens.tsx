@@ -50,6 +50,15 @@ import { spendingSummary } from '../services/spendingSummary';
 import { notifyDataChanged, useData } from '../store/dataStore';
 import { useSettings, useTheme, type ThemeMode } from '../store/settingsStore';
 import { categoryColor, categoryColors, spacing } from '../theme/colors';
+import {
+  buildCategoryTree,
+  categoryPath,
+  categoryPickerItems,
+  descendantIds,
+  flattenTree,
+  parentError,
+  parentOptions,
+} from '../utils/categoryTree';
 import { formatDate, formatDateTime } from '../utils/format';
 import type { CalendarKind } from '../utils/periodUtils';
 
@@ -269,6 +278,14 @@ export function SettingsScreen() {
         />
         <Divider />
         <ListRow
+          title="Parsed accounts"
+          subtitle="Every account found in your bank SMS, and who owns it"
+          icon="manage-search"
+          chevron
+          onPress={() => navigation.navigate('ParsedAccounts', undefined)}
+        />
+        <Divider />
+        <ListRow
           title="Categories"
           subtitle={`${categories.length} categories`}
           icon="category"
@@ -396,12 +413,21 @@ export function SettingsScreen() {
         />
         <Divider />
         <ListRow
-          title="Google Drive backup"
-          subtitle="Back up to a private folder in your own Drive"
+          title="Google Drive sync"
+          subtitle="Back up and sync devices through a private folder in your own Drive"
           icon="cloud-upload"
           chevron
           disabled={busy !== null}
           onPress={() => navigation.navigate('DriveBackup')}
+        />
+        <Divider />
+        <ListRow
+          title="Cloudflare D1 sync"
+          subtitle="Sync devices through your own Cloudflare D1 database"
+          icon="storage"
+          chevron
+          disabled={busy !== null}
+          onPress={() => navigation.navigate('D1Sync')}
         />
       </Card>
 
@@ -428,7 +454,7 @@ export function SettingsScreen() {
 
 // ------------------------------------------------------------------ categories
 
-function emptyCategory(flow: CategoryFlow): Category {
+function emptyCategory(flow: CategoryFlow, parentId: number | null = null): Category {
   return {
     id: null,
     name: '',
@@ -441,8 +467,11 @@ function emptyCategory(flow: CategoryFlow): Category {
     recurring: false,
     builtIn: false,
     builtInKey: null,
+    parentId,
   };
 }
+
+const TREE_INDENT = 28;
 
 export function CategoriesScreen({ navigation }: StackScreenProps<'Categories'>) {
   const colors = useTheme();
@@ -450,8 +479,11 @@ export function CategoriesScreen({ navigation }: StackScreenProps<'Categories'>)
   const [flow, setFlow] = useState<CategoryFlow>('expense');
   const [editor, setEditor] = useState<{ original: Category | null; draft: Category } | null>(null);
   const [saving, setSaving] = useState(false);
+  const [collapsed, setCollapsed] = useState<Set<number>>(() => new Set());
 
   const openNew = useCallback(() => setEditor({ original: null, draft: emptyCategory(flow) }), [flow]);
+  const openNewChild = (parent: Category) =>
+    setEditor({ original: null, draft: { ...emptyCategory(parent.flow, parent.id ?? null), colorKey: parent.colorKey ?? null } });
 
   useLayoutEffect(() => {
     navigation.setOptions({
@@ -460,7 +492,15 @@ export function CategoriesScreen({ navigation }: StackScreenProps<'Categories'>)
     });
   }, [navigation, openNew]);
 
-  const visible = useMemo(() => categories.filter((c) => c.flow === flow), [categories, flow]);
+  const tree = useMemo(() => buildCategoryTree(categories, flow), [categories, flow]);
+  const visible = useMemo(() => flattenTree(tree, collapsed), [tree, collapsed]);
+  const toggleCollapsed = (id: number) =>
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
 
   const update = (patch: Partial<Category>) => setEditor((e) => (e ? { ...e, draft: { ...e.draft, ...patch } } : e));
 
@@ -479,6 +519,11 @@ export function CategoriesScreen({ navigation }: StackScreenProps<'Categories'>)
       Alert.alert('Category', `An ${draft.flow} category named "${name}" already exists.`);
       return;
     }
+    const parentProblem = parentError(categories, draft, draft.parentId);
+    if (parentProblem) {
+      Alert.alert('Parent category', parentProblem);
+      return;
+    }
     const description = draft.description?.trim() || null;
     setSaving(true);
     try {
@@ -493,6 +538,16 @@ export function CategoriesScreen({ navigation }: StackScreenProps<'Categories'>)
           description,
           flow: draft.flow,
           recurring: draft.recurring,
+          parentId: draft.parentId ?? null,
+        });
+      }
+      if (draft.parentId != null) {
+        // Show the new or moved subcategory.
+        setCollapsed((prev) => {
+          if (!prev.has(draft.parentId!)) return prev;
+          const next = new Set(prev);
+          next.delete(draft.parentId!);
+          return next;
         });
       }
       setEditor(null);
@@ -506,10 +561,19 @@ export function CategoriesScreen({ navigation }: StackScreenProps<'Categories'>)
 
   const remove = async () => {
     const target = editor?.original;
-    if (!target || target.builtIn) return;
+    if (!target || target.builtIn || target.id == null) return;
+    const childCount =
+      flattenTree(buildCategoryTree(categories, target.flow)).find((n) => n.category.id === target.id)?.children.length ?? 0;
+    const parentName = target.parentId != null ? categories.find((c) => c.id === target.parentId)?.name : null;
+    const childNote =
+      childCount > 0
+        ? ` Its ${childCount === 1 ? 'subcategory moves' : `${childCount} subcategories move`} ${
+            parentName ? `under "${parentName}"` : 'to the top level'
+          }.`
+        : '';
     const ok = await confirm(
       'Delete category',
-      `Delete "${target.name}"? Transactions in it become uncategorized and budgets stop tracking it.`,
+      `Delete "${target.name}"? Transactions in it become uncategorized and budgets stop tracking it.${childNote}`,
       'Delete',
       true,
     );
@@ -525,6 +589,11 @@ export function CategoriesScreen({ navigation }: StackScreenProps<'Categories'>)
 
   const draft = editor?.draft ?? null;
   const accent = draft ? categoryColor(draft.colorKey, draft.id) : colors.primary;
+  const parentChoices = useMemo(() => (draft ? parentOptions(categories, draft) : []), [categories, draft]);
+  const subcategoryCount = useMemo(
+    () => (draft?.id != null ? descendantIds(categories, draft.id).size : 0),
+    [categories, draft?.id],
+  );
 
   return (
     <Screen edges={['left', 'right', 'bottom']}>
@@ -537,28 +606,73 @@ export function CategoriesScreen({ navigation }: StackScreenProps<'Categories'>)
         />
       ) : (
         <Card style={styles.listCard}>
-          {visible.map((category, index) => (
-            <React.Fragment key={category.id ?? category.name}>
-              {index > 0 ? <Divider /> : null}
-              <ListRow
-                title={category.name}
-                subtitle={[categoryTypeLabel(category), category.recurring ? 'Recurring' : null, category.description]
-                  .filter(Boolean)
-                  .join(' · ')}
-                left={<CategoryIcon category={category} size={36} />}
-                right={category.builtIn ? <Pill label="Built-in" color={colors.textMuted} /> : undefined}
-                chevron
-                onPress={() => setEditor({ original: category, draft: { ...category } })}
-              />
-            </React.Fragment>
-          ))}
+          {visible.map((node, index) => {
+            const category = node.category;
+            const hasChildren = node.children.length > 0;
+            const isCollapsed = collapsed.has(category.id);
+            return (
+              <React.Fragment key={category.id}>
+                {index > 0 ? <Divider /> : null}
+                <View style={[ui.rowCenter, { paddingLeft: node.depth * TREE_INDENT }]}>
+                  <View style={ui.flex}>
+                    <ListRow
+                      title={category.name}
+                      subtitle={[
+                        hasChildren
+                          ? `${node.children.length} subcategor${node.children.length === 1 ? 'y' : 'ies'}`
+                          : null,
+                        categoryTypeLabel(category),
+                        category.recurring ? 'Recurring' : null,
+                        category.description,
+                      ]
+                        .filter(Boolean)
+                        .join(' · ')}
+                      left={<CategoryIcon category={category} size={node.depth > 0 ? 30 : 36} />}
+                      right={category.builtIn ? <Pill label="Built-in" color={colors.textMuted} /> : undefined}
+                      onPress={() => setEditor({ original: category, draft: { ...category } })}
+                    />
+                  </View>
+                  {node.depth === 0 ? (
+                    <IconButton
+                      name="add"
+                      size={20}
+                      color={colors.textSecondary}
+                      accessibilityLabel={`Add subcategory to ${category.name}`}
+                      onPress={() => openNewChild(category)}
+                    />
+                  ) : null}
+                  {hasChildren ? (
+                    <IconButton
+                      name={isCollapsed ? 'expand-more' : 'expand-less'}
+                      color={colors.textSecondary}
+                      accessibilityLabel={isCollapsed ? `Show subcategories of ${category.name}` : `Hide subcategories of ${category.name}`}
+                      onPress={() => toggleCollapsed(category.id)}
+                    />
+                  ) : (
+                    <View style={styles.treeToggleSpacer} />
+                  )}
+                </View>
+              </React.Fragment>
+            );
+          })}
         </Card>
       )}
+      {visible.length > 0 ? (
+        <Text style={[styles.small, { color: colors.textMuted }]}>
+          Tap + on a category to add a subcategory. Totals for a category include its subcategories.
+        </Text>
+      ) : null}
 
       <Sheet
         visible={editor !== null}
         onClose={() => setEditor(null)}
-        title={editor?.original ? 'Edit category' : `New ${flow} category`}
+        title={
+          editor?.original
+            ? 'Edit category'
+            : draft?.parentId != null
+              ? 'New subcategory'
+              : `New ${draft?.flow ?? flow} category`
+        }
       >
         {draft ? (
           <View style={styles.form}>
@@ -569,6 +683,27 @@ export function CategoriesScreen({ navigation }: StackScreenProps<'Categories'>)
               placeholder={draft.flow === 'income' ? 'e.g. Freelance' : 'e.g. Coffee'}
               autoFocus={!editor?.original}
             />
+            <Text style={[styles.label, { color: colors.textSecondary }]}>Parent category</Text>
+            <View style={ui.rowWrap}>
+              <Chip
+                label="None (top level)"
+                selected={draft.parentId == null}
+                onPress={() => update({ parentId: null })}
+              />
+              {parentChoices.map((node) => (
+                <Chip
+                  key={node.category.id}
+                  label={categoryPath(categories, node.category)}
+                  selected={draft.parentId === node.category.id}
+                  onPress={() => update({ parentId: node.category.id })}
+                />
+              ))}
+            </View>
+            {subcategoryCount > 0 ? (
+              <Text style={[styles.small, { color: colors.textMuted }]}>
+                {subcategoryCount} subcategor{subcategoryCount === 1 ? 'y' : 'ies'} below this one move with it.
+              </Text>
+            ) : null}
             <ToggleRow
               title={draft.flow === 'income' ? 'Main income' : 'Essential'}
               subtitle={draft.flow === 'income' ? 'A primary, dependable source of income' : 'A need rather than a want'}
@@ -625,6 +760,14 @@ export function CategoriesScreen({ navigation }: StackScreenProps<'Categories'>)
               multiline
             />
             <Button title="Save" icon="check" loading={saving} onPress={() => void save()} />
+            {editor?.original?.id != null ? (
+              <Button
+                title="Add subcategory"
+                icon="subdirectory-arrow-right"
+                variant="secondary"
+                onPress={() => openNewChild(editor.original!)}
+              />
+            ) : null}
             {editor?.original && !editor.original.builtIn ? (
               <Button title="Delete category" icon="delete-outline" variant="danger" onPress={() => void remove()} />
             ) : null}
@@ -801,7 +944,7 @@ export function AutoCategorizationScreen() {
   if (rules === null) return <Loading />;
 
   const editorCategories = editing
-    ? categories.filter(hasId).filter((c) => c.flow === editing.group.flow && !isManagedCategory(c))
+    ? categoryPickerItems(categories, (c) => c.flow === editing.group.flow && !isManagedCategory(c)).map((i) => i.category)
     : [];
 
   const groupSubtitle = (group: RuleGroup) =>
@@ -914,7 +1057,7 @@ export function AutoCategorizationScreen() {
                 return (
                   <Chip
                     key={category.id}
-                    label={category.name}
+                    label={categoryPath(categories, category)}
                     icon={isPrimary ? 'star' : categoryIconName(category.iconKey)}
                     color={categoryColor(category.colorKey, category.id)}
                     selected={editing.ids.includes(category.id)}
@@ -1482,7 +1625,9 @@ export function NotificationSettingsScreen() {
   if (values === null) return <Loading />;
 
   const quickCandidates = (flow: CategoryFlow) =>
-    categories.filter(hasId).filter((c) => c.flow === flow && !c.uncategorized && !isReimbursementCategory(c));
+    categoryPickerItems(categories, (c) => c.flow === flow && !c.uncategorized && !isReimbursementCategory(c)).map(
+      (i) => i.category,
+    );
 
   const renderToggles = (group: ToggleGroup) =>
     NOTIFICATION_TOGGLES.filter((t) => t.group === group).map((toggle, index) => (
@@ -1556,7 +1701,7 @@ export function NotificationSettingsScreen() {
                 {quickCandidates(flow).map((category) => (
                   <Chip
                     key={category.id}
-                    label={category.name}
+                    label={categoryPath(categories, category)}
                     icon={categoryIconName(category.iconKey)}
                     color={categoryColor(category.colorKey, category.id)}
                     selected={selected.includes(category.id)}
@@ -1713,6 +1858,7 @@ const styles = StyleSheet.create({
   listCard: { paddingVertical: spacing.xs },
   label: { fontSize: 13, fontWeight: '600' },
   form: { gap: spacing.md },
+  treeToggleSpacer: { width: 34 },
   iconChoice: { width: 44, height: 44, borderRadius: 22, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   swatch: { width: 36, height: 36, borderRadius: 18, borderWidth: 2, alignItems: 'center', justifyContent: 'center' },
   itemTitle: { flex: 1, fontSize: 15, fontWeight: '600' },

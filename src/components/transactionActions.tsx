@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { isManagedCategory } from '../models/category';
+import { categoryPickerItems } from '../utils/categoryTree';
 import { isCredit, makeTransaction, selectedCategoryIds, type Transaction } from '../models/transaction';
 import { transactionRepository } from '../repositories/transactionRepository';
 import { notifyDataChanged, useData } from '../store/dataStore';
@@ -90,7 +91,7 @@ function QuickCategorySheet(props: { tx: Transaction; onClose: () => void; onOpe
   const categories = useData((s) => s.categories);
   const [selected, setSelected] = useState<number[]>(() => selectedCategoryIds(props.tx));
   const flow = isCredit(props.tx) ? 'income' : 'expense';
-  const choices = categories.filter((c) => c.flow === flow && c.id != null && !isManagedCategory(c));
+  const choices = categoryPickerItems(categories, (c) => c.flow === flow && !isManagedCategory(c));
 
   const toggle = async (id: number) => {
     const next = selected.includes(id) ? selected.filter((x) => x !== id) : [...selected, id];
@@ -113,8 +114,8 @@ function QuickCategorySheet(props: { tx: Transaction; onClose: () => void; onOpe
     <Sheet visible onClose={props.onClose} title="Categorize">
       <View style={{ gap: spacing.md }}>
         <View style={ui.rowWrap}>
-          {choices.map((c) => (
-            <Chip key={c.id!} label={c.name} selected={selected.includes(c.id!)} onPress={() => void toggle(c.id!)} />
+          {choices.map(({ category: c, label }) => (
+            <Chip key={c.id} label={label} selected={selected.includes(c.id)} onPress={() => void toggle(c.id)} />
           ))}
         </View>
         <Pressable

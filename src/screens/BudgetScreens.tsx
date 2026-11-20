@@ -28,15 +28,27 @@ import {
   type BudgetTimeFrame,
   type BudgetType,
 } from '../models/budget';
-import type { Category } from '../models/category';
+import { isReimbursementCategory, type Category, type CategoryFlow } from '../models/category';
+import { selectedCategoryIds, txDate, type Transaction } from '../models/transaction';
 import { useAppNavigation, type StackScreenProps } from '../navigation/types';
 import { budgetRepository } from '../repositories/budgetRepository';
 import { budgetService } from '../services/budgetService';
+import { isSelfTransfer } from '../services/spendingSummary';
 import { notifyDataChanged, useData } from '../store/dataStore';
 import { useSettings, useTheme } from '../store/settingsStore';
 import { spacing } from '../theme/colors';
 import { formatDate, formatMoney, parseAmountInput } from '../utils/format';
-import { periodStart } from '../utils/periodUtils';
+import { CASH_BANK_ID } from '../utils/cashConstants';
+import {
+  buildCategoryTree,
+  categoryPickerItems,
+  flattenTree,
+  nonZeroByTotal,
+  ownCategoryTotals,
+  rollUpTotals,
+  type CategoryTotalNode,
+} from '../utils/categoryTree';
+import { isWithin, periodEndInclusive, periodStart } from '../utils/periodUtils';
 import { IncomeView, PlannedSpendingView } from './PlanningScreens';
 
 type BudgetView = 'main' | 'categories' | 'planned' | 'income';
@@ -253,6 +265,7 @@ export function BudgetScreen() {
           {statuses && statuses.length > 0 ? (
             <Button title="Add budget" variant="secondary" icon="add" onPress={openNew} />
           ) : null}
+          {view === 'categories' ? <CategoryTotalsView /> : null}
         </>
       )}
     </Screen>
@@ -363,8 +376,9 @@ export function BudgetEditScreen({ route, navigation }: StackScreenProps<'Budget
   const [timeFrame, setTimeFrame] = useState<BudgetTimeFrame>('monthly');
   const [saving, setSaving] = useState(false);
 
+  // Parents first, each followed by its subcategories; a budget on a parent also counts its subcategories.
   const expenseCategories = useMemo(
-    () => categories.filter((c) => c.flow === 'expense' && c.id != null),
+    () => categoryPickerItems(categories, (c) => c.flow === 'expense'),
     [categories],
   );
   const selectedCategories = useMemo(
@@ -562,7 +576,7 @@ export function BudgetEditScreen({ route, navigation }: StackScreenProps<'Budget
       <SegmentedControl<BudgetType> options={TYPE_OPTIONS} value={type} onChange={setType} />
       <Text style={{ color: colors.textMuted, fontSize: 12 }}>
         {type === 'category'
-          ? 'Tracks spending in the selected categories only.'
+          ? 'Tracks spending in the selected categories only. A major category includes its subcategories.'
           : `Tracks all expenses and resets every ${type === 'daily' ? 'day' : type === 'monthly' ? 'month' : 'year'}.`}
       </Text>
 
@@ -574,12 +588,12 @@ export function BudgetEditScreen({ route, navigation }: StackScreenProps<'Budget
               <Text style={{ color: colors.textMuted }}>No expense categories yet. Add some in Settings → Categories.</Text>
             ) : (
               <View style={ui.rowWrap}>
-                {expenseCategories.map((c) => (
+                {expenseCategories.map(({ category: c, label }) => (
                   <Chip
-                    key={c.id!}
-                    label={c.name}
-                    selected={categoryIds.includes(c.id!)}
-                    onPress={() => toggleCategory(c.id!)}
+                    key={c.id}
+                    label={label}
+                    selected={categoryIds.includes(c.id)}
+                    onPress={() => toggleCategory(c.id)}
                   />
                 ))}
               </View>
@@ -650,5 +664,140 @@ export function BudgetEditScreen({ route, navigation }: StackScreenProps<'Budget
       />
       {original ? <Button title="Delete budget" variant="danger" icon="delete" onPress={() => void remove()} /> : null}
     </Screen>
+  );
+}
+
+// ------------------------------------------------------------------ totals by category
+
+type TotalsPeriod = 'monthly' | 'yearly';
+
+/** Totals per category for this month or year: each major category with its subcategories rolled up. */
+function CategoryTotalsView() {
+  const colors = useTheme();
+  const calendar = useSettings((s) => s.calendar);
+  const { transactions, categories, splitsByParent, reimbursedByExpense, selfTransferReferences, selfCategoryIds } = useData();
+  const [flow, setFlow] = useState<CategoryFlow>('expense');
+  const [period, setPeriod] = useState<TotalsPeriod>('monthly');
+  const [collapsed, setCollapsed] = useState<Set<number>>(() => new Set());
+
+  const data = useMemo(() => {
+    const start = periodStart(new Date(), period, calendar);
+    const end = periodEndInclusive(start, period, calendar);
+    const byId = new Map(categories.map((c) => [c.id ?? -1, c]));
+    const inPeriod = transactions.filter((tx) => {
+      const d = txDate(tx);
+      return !!d && isWithin(d, start, end);
+    });
+    // Same rules as the Money totals: cash spending is never a self transfer, reimbursements aren't income.
+    const own = ownCategoryTotals({
+      transactions: inPeriod,
+      flow,
+      splitsByParent,
+      reimbursedByExpense,
+      isSelfTransfer: (tx: Transaction) =>
+        isSelfTransfer(tx, selfTransferReferences, selfCategoryIds) && !(tx.bankId === CASH_BANK_ID && tx.type === 'DEBIT'),
+      excludeFromIncome: (tx: Transaction) => selectedCategoryIds(tx).some((id) => isReimbursementCategory(byId.get(id))),
+    });
+    const tree = buildCategoryTree(categories, flow);
+    const known = new Set(flattenTree(tree).map((n) => n.category.id));
+    let total = 0;
+    let uncategorized = 0;
+    for (const [id, value] of own) {
+      total += value;
+      if (id == null || !known.has(id)) uncategorized += value;
+    }
+    return { nodes: nonZeroByTotal(rollUpTotals(tree, own)), total, uncategorized, start, end };
+  }, [transactions, categories, splitsByParent, reimbursedByExpense, selfTransferReferences, selfCategoryIds, flow, period, calendar]);
+
+  const rows: CategoryTotalNode[] = [];
+  const walk = (nodes: CategoryTotalNode[]) => {
+    for (const node of nodes) {
+      rows.push(node);
+      if (!collapsed.has(node.category.id)) walk(node.children);
+    }
+  };
+  walk(data.nodes);
+
+  const toggle = (id: number) =>
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  const share = (value: number) => (data.total > 0 ? `${Math.round((value / data.total) * 100)}%` : null);
+  const accent = flow === 'income' ? colors.income : colors.expense;
+
+  return (
+    <>
+      <SectionTitle title={flow === 'income' ? 'Income by category' : 'Spending by category'} />
+      <View style={ui.rowWrap}>
+        <Chip label="Expenses" selected={flow === 'expense'} onPress={() => setFlow('expense')} />
+        <Chip label="Income" selected={flow === 'income'} onPress={() => setFlow('income')} />
+        <Chip label="This month" selected={period === 'monthly'} onPress={() => setPeriod('monthly')} />
+        <Chip label="This year" selected={period === 'yearly'} onPress={() => setPeriod('yearly')} />
+      </View>
+      <Card style={{ gap: spacing.xs }}>
+        <View style={[ui.rowCenter, { justifyContent: 'space-between' }]}>
+          <Text style={{ color: colors.textSecondary, fontSize: 12 }}>
+            {formatDate(data.start, calendar)} – {formatDate(data.end, calendar)}
+          </Text>
+          <AmountText value={data.total} color={accent} style={{ fontSize: 16, fontWeight: '700' }} />
+        </View>
+        {rows.length === 0 && data.uncategorized <= 0 ? (
+          <Text style={{ color: colors.textMuted }}>Nothing recorded in this period.</Text>
+        ) : null}
+        {rows.map((node) => {
+          const hasChildren = node.children.length > 0;
+          const isCollapsed = collapsed.has(node.category.id);
+          const major = node.depth === 0;
+          return (
+            <View key={node.category.id} style={{ paddingLeft: node.depth * 24, gap: 4, paddingVertical: 4 }}>
+              <ListRow
+                title={node.category.name}
+                subtitle={[
+                  share(node.total),
+                  hasChildren && node.own > 0.005 ? `${formatMoney(node.own)} directly` : null,
+                  hasChildren ? `${node.children.length} subcategor${node.children.length === 1 ? 'y' : 'ies'}` : null,
+                ]
+                  .filter(Boolean)
+                  .join(' · ')}
+                left={<CategoryIcon category={node.category} size={major ? 32 : 26} />}
+                right={
+                  <View style={ui.rowCenter}>
+                    <AmountText
+                      value={node.total}
+                      color={major ? colors.text : colors.textSecondary}
+                      style={{ fontWeight: major ? '700' : '500' }}
+                    />
+                    {hasChildren ? (
+                      <Icon name={isCollapsed ? 'expand-more' : 'expand-less'} color={colors.textMuted} />
+                    ) : null}
+                  </View>
+                }
+                onPress={hasChildren ? () => toggle(node.category.id) : undefined}
+              />
+              <ProgressBar progress={data.total > 0 ? node.total / data.total : 0} color={accent} height={major ? 4 : 3} />
+            </View>
+          );
+        })}
+        {data.uncategorized > 0.005 ? (
+          <View style={{ gap: 4, paddingVertical: 4 }}>
+            <ListRow
+              title="Uncategorized"
+              subtitle={share(data.uncategorized)}
+              left={<CategoryIcon category={null} size={32} />}
+              right={<AmountText value={data.uncategorized} color={colors.text} style={{ fontWeight: '700' }} />}
+            />
+            <ProgressBar progress={data.total > 0 ? data.uncategorized / data.total : 0} color={colors.textMuted} height={4} />
+          </View>
+        ) : null}
+      </Card>
+      <Text style={{ color: colors.textMuted, fontSize: 12 }}>
+        {`A major category's total includes its subcategories. Parts of a split for other people are loans, not your ${
+          flow === 'income' ? 'income' : 'spending'
+        }.`}
+      </Text>
+    </>
   );
 }

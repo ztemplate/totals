@@ -173,6 +173,17 @@ export function TrackedAccounts({ navigation }: { navigation: AppNavigation }) {
         />
       ) : null}
       <UnlabeledAccounts items={unlabeled} navigation={navigation} />
+      {transactions.length > 0 ? (
+        <Card onPress={() => navigation.navigate('ParsedAccounts', undefined)} style={{ paddingVertical: spacing.xs }}>
+          <ListRow
+            icon="manage-search"
+            title="Parsed accounts"
+            subtitle="Every account and wallet found in your SMS, and who it belongs to"
+            chevron
+            onPress={() => navigation.navigate('ParsedAccounts', undefined)}
+          />
+        </Card>
+      ) : null}
       <SmsScanCard hasAccounts={bankAccountCount > 0} />
       {groups.map((group) => (
         <View key={group.bankId} style={{ gap: spacing.sm }}>
@@ -413,7 +424,7 @@ function SmsScanCard({ hasAccounts }: { hasAccounts: boolean }) {
   );
 }
 
-function LabelAccountSheet({ item, onClose }: { item: UnlabeledAccount | null; onClose: () => void }) {
+export function LabelAccountSheet({ item, onClose }: { item: UnlabeledAccount | null; onClose: () => void }) {
   const colors = useTheme();
   const banks = useData((s) => s.banks);
   const bank = item ? bankById(banks, item.bankId) : null;

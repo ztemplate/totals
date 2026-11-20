@@ -36,11 +36,14 @@ import {
   ProfilesScreen,
   SettingsScreen,
 } from './screens/SettingsScreens';
+import { D1SyncScreen } from './screens/D1SyncScreen';
 import { DriveBackupScreen } from './screens/DriveBackupScreen';
+import { ParsedAccountsScreen } from './screens/ParsedAccountsScreen';
 import { SharedGroupScreen, SharedScreen } from './screens/SharedScreens';
 import { TransactionDetailScreen } from './screens/TransactionDetailScreen';
 import { appLock } from './services/appLock';
 import { registerBackgroundTasks } from './services/backgroundTasks';
+import { startCloudAutoSync } from './services/cloudAutoSync';
 import { dataChanged } from './services/dataChanged';
 import { notificationIntentBus, type NotificationIntent } from './services/notificationIntentBus';
 import { notificationService } from './services/notifications';
@@ -134,7 +137,9 @@ function RootNavigator() {
       <Stack.Screen name="BudgetEdit" component={BudgetEditScreen} options={{ title: 'Budget' }} />
       <Stack.Screen name="People" component={PeopleScreen} />
       <Stack.Screen name="PersonDetail" component={PersonDetailScreen} options={{ title: 'Person' }} />
-      <Stack.Screen name="DriveBackup" component={DriveBackupScreen} options={{ title: 'Google Drive backup' }} />
+      <Stack.Screen name="DriveBackup" component={DriveBackupScreen} options={{ title: 'Google Drive sync' }} />
+      <Stack.Screen name="D1Sync" component={D1SyncScreen} options={{ title: 'Cloudflare D1 sync' }} />
+      <Stack.Screen name="ParsedAccounts" component={ParsedAccountsScreen} options={{ title: 'Parsed accounts' }} />
     </Stack.Navigator>
   );
 }
@@ -210,7 +215,21 @@ async function startBackgroundServices(): Promise<() => void> {
     try {
       const granted = await requestSmsPermission();
       if (granted) {
-        unsubscribe = startSmsListener(() => dataChanged.notify());
+        const stopListener = startSmsListener(() => dataChanged.notify());
+        // Coming back to the foreground: pick up (and notify) anything the receiver missed
+        // while the app was in the background. Throttled; scans and live SMS run in turn.
+        let lastResumeCatchup = Date.now();
+        const appStateSub = AppState.addEventListener('change', (state) => {
+          if (state !== 'active' || Date.now() - lastResumeCatchup < 60_000) return;
+          lastResumeCatchup = Date.now();
+          void smsService.syncMissedBankSmsSinceLastCatchup().catch((error) => {
+            if (__DEV__) console.warn('debug: Resume SMS catch-up failed', error);
+          });
+        });
+        unsubscribe = () => {
+          stopListener();
+          appStateSub.remove();
+        };
         const result = await smsService.syncMissedBankSmsSinceLastCatchup();
         if (result.added > 0) dataChanged.notify();
         if (!(await smsService.hasImportedAllBankHistory())) {
@@ -225,6 +244,12 @@ async function startBackgroundServices(): Promise<() => void> {
     }
   }
   await registerBackgroundTasks();
+  const stopCloudSync = startCloudAutoSync();
+  const stopSms = unsubscribe;
+  unsubscribe = () => {
+    stopSms();
+    stopCloudSync();
+  };
   try {
     await notificationService.emitLaunchIntentIfAny();
   } catch (error) {

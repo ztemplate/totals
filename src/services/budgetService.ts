@@ -1,4 +1,5 @@
 import {
+  budgetIncludesCategory,
   budgetIsEffectiveOn,
   budgetSelectedCategoryIds,
   getCurrentPeriodEnd,
@@ -6,12 +7,15 @@ import {
   type Budget,
   type BudgetStatus,
 } from '../models/budget';
+import type { Category } from '../models/category';
 import type { TransactionSplit } from '../models/split';
 import type { Transaction } from '../models/transaction';
 import { budgetRepository } from '../repositories/budgetRepository';
+import { categoryRepository } from '../repositories/categoryRepository';
 import { reimbursementRepository } from '../repositories/reimbursementRepository';
 import { splitRepository } from '../repositories/splitRepository';
 import { transactionRepository } from '../repositories/transactionRepository';
+import { ancestorIds, expandWithDescendants } from '../utils/categoryTree';
 import { amountInCategories, groupSplitsByParent } from '../utils/transactionSplits';
 import { expenseAmountAfterReimbursement, transactionDebitOutflow } from '../utils/transactionAmounts';
 
@@ -45,6 +49,16 @@ function sumNetSpending(
     sum += gross > 0 ? (inCategories * net) / gross : 0;
   }
   return sum;
+}
+
+/**
+ * The categories a budget counts: the chosen ones plus all of their subcategories, so a budget on a
+ * major category tracks everything grouped under it. null = all expenses.
+ */
+async function budgetCategorySet(ids: Iterable<number>, categories?: Category[]): Promise<Set<number> | null> {
+  const selected = [...ids].filter((id) => id > 0);
+  if (selected.length === 0) return null;
+  return expandWithDescendants(categories ?? (await categoryRepository.getCategories()), selected);
 }
 
 async function loadSplitsByParent(): Promise<Map<string, TransactionSplit[]>> {
@@ -82,13 +96,14 @@ async function getStatusesForBudgets(budgets: Budget[]): Promise<BudgetStatus[]>
 
   const statuses = new Array<BudgetStatus>(budgets.length);
   const splitsByParent = await loadSplitsByParent();
+  const categories = await categoryRepository.getCategories();
   for (const requests of requestsByPeriod.values()) {
     const { periodStart, periodEnd } = requests[0];
     const transactions = await transactionRepository.getTransactionsByDateRange(periodStart, periodEnd, { type: 'DEBIT' });
     const reimbursed = await reimbursementRepository.getAppliedTotalsForExpenses(transactions.map((t) => t.reference));
     for (const request of requests) {
-      const categoryIds = new Set(budgetSelectedCategoryIds(request.budget));
-      const spent = sumNetSpending(transactions, reimbursed, categoryIds.size === 0 ? null : categoryIds, splitsByParent);
+      const categoryIds = await budgetCategorySet(budgetSelectedCategoryIds(request.budget), categories);
+      const spent = sumNetSpending(transactions, reimbursed, categoryIds, splitsByParent);
       statuses[request.index] = buildStatus(request, spent);
     }
   }
@@ -101,7 +116,7 @@ function getStatusesForCurrentBudgets(budgets: Budget[]): Promise<BudgetStatus[]
 }
 
 export const budgetService = {
-  /** Net expense spending for a period, optionally limited to categories. */
+  /** Net expense spending for a period, optionally limited to categories (and their subcategories). */
   async calculateSpending(params: {
     startDate: Date;
     endDate: Date;
@@ -114,7 +129,7 @@ export const budgetService = {
     const ids = new Set<number>((params.categoryIds ?? []).filter((id) => id > 0));
     if (params.categoryId != null && params.categoryId > 0) ids.add(params.categoryId);
     const reimbursed = await reimbursementRepository.getAppliedTotalsForExpenses(transactions.map((t) => t.reference));
-    return sumNetSpending(transactions, reimbursed, ids.size === 0 ? null : ids, await loadSplitsByParent());
+    return sumNetSpending(transactions, reimbursed, await budgetCategorySet(ids), await loadSplitsByParent());
   },
 
   async getBudgetStatus(budget: Budget): Promise<BudgetStatus> {
@@ -133,9 +148,13 @@ export const budgetService = {
     return getStatusesForCurrentBudgets(await budgetRepository.getCategoryBudgets(calendar));
   },
 
+  /** Effective budgets that count spending in this category: on it or on any of its parent categories. */
   async getBudgetsByCategory(categoryId: number, calendar?: string | null): Promise<Budget[]> {
     const now = new Date();
-    return (await budgetRepository.getBudgetsByCategory(categoryId, calendar)).filter((b) => budgetIsEffectiveOn(b, now));
+    const ids = [categoryId, ...ancestorIds(await categoryRepository.getCategories(), categoryId)];
+    return (await budgetRepository.getActiveBudgets(calendar)).filter(
+      (b) => budgetIncludesCategory(b, ids) && budgetIsEffectiveOn(b, now),
+    );
   },
 
   async getCurrentBudgetStatus(budget: Budget): Promise<BudgetStatus | null> {

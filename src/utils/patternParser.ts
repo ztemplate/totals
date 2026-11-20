@@ -89,6 +89,28 @@ function compile(source: string): RegExp | null {
   return compiled;
 }
 
+interface CompiledPattern {
+  source: string;
+  re: RegExp | null;
+  hasBalanceGroup: boolean;
+  hasAccountGroup: boolean;
+}
+
+/** Per pattern object, so a scan does not look up every regex source string for every message. */
+const compiledPatterns = new WeakMap<SmsPattern, CompiledPattern>();
+function compiledFor(pattern: SmsPattern): CompiledPattern {
+  const cached = compiledPatterns.get(pattern);
+  if (cached && cached.source === pattern.regex) return cached;
+  const compiled: CompiledPattern = {
+    source: pattern.regex,
+    re: compile(pattern.regex),
+    hasBalanceGroup: hasGroup(pattern.regex, 'balance'),
+    hasAccountGroup: hasGroup(pattern.regex, 'account'),
+  };
+  compiledPatterns.set(pattern, compiled);
+  return compiled;
+}
+
 export function parsePatternMessage(params: {
   message: string;
   patterns: SmsPattern[];
@@ -99,7 +121,8 @@ export function parsePatternMessage(params: {
   const { message, patterns, bank, bankId } = params;
   for (const pattern of patterns) {
     try {
-      const re = compile(pattern.regex);
+      const compiled = compiledFor(pattern);
+      const re = compiled.re;
       if (!re) continue;
       const match = message.match(re);
       if (!match) continue;
@@ -108,7 +131,7 @@ export function parsePatternMessage(params: {
       if (amount === null) continue;
 
       const balance = cleanNumber(group(match, 'balance'));
-      if (hasGroup(pattern.regex, 'balance') && balance === null) continue;
+      if (compiled.hasBalanceGroup && balance === null) continue;
 
       let account = group(match, 'account')?.trim() ?? null;
       if (account === '') account = null;
@@ -159,7 +182,7 @@ export function parsePatternMessage(params: {
       }
 
       if (pattern.refRequired && !reference) continue;
-      if (pattern.hasAccount && hasGroup(pattern.regex, 'account') && !account) continue;
+      if (pattern.hasAccount && compiled.hasAccountGroup && !account) continue;
 
       return {
         type,

@@ -171,6 +171,39 @@ export const peopleRepository = {
     });
   },
 
+  /**
+   * Records who owns an account found in bank SMS (Parsed accounts). The owner is stored as the person's
+   * account number for that bank ('phone' for SIM wallets such as telebirr), the same rows Details shows,
+   * so one person can own many accounts. `replaceAliasIds` are the rows that tied the account to its
+   * previous owner; they are removed. personId null only clears the owner.
+   */
+  async setAccountOwner(input: {
+    bankId: number;
+    accountNumber: string;
+    wallet: boolean;
+    personId: number | null;
+    replaceAliasIds: readonly number[];
+  }): Promise<void> {
+    const kind: PersonAccountKind = input.wallet ? 'phone' : 'account';
+    const identifier = input.accountNumber.trim();
+    const normalized = normalizePersonIdentifier(identifier, kind);
+    if (input.personId !== null && !normalized) throw new Error('This account has no number to save.');
+    const db = await getDb();
+    await db.withTransactionAsync(async () => {
+      for (const id of input.replaceAliasIds) await db.runAsync('DELETE FROM person_accounts WHERE id = ?', [id]);
+      if (input.personId === null) return;
+      await db.runAsync('DELETE FROM person_accounts WHERE kind = ? AND normalizedIdentifier = ? AND bankId = ?', [
+        kind,
+        normalized,
+        input.bankId,
+      ]);
+      await db.runAsync(
+        'INSERT INTO person_accounts (personId, bankId, identifier, normalizedIdentifier, kind, createdAt) VALUES (?, ?, ?, ?, ?, ?)',
+        [input.personId, input.bankId, identifier, normalized, kind, new Date().toISOString()],
+      );
+    });
+  },
+
   async removeAccount(id: number): Promise<void> {
     const db = await getDb();
     await db.runAsync('DELETE FROM person_accounts WHERE id = ?', [id]);

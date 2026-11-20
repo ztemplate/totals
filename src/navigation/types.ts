@@ -30,6 +30,8 @@ export type RootStackParamList = {
   People: undefined;
   PersonDetail: { personId: number };
   DriveBackup: undefined;
+  ParsedAccounts: { bankId?: number | null; personId?: number | null } | undefined;
+  D1Sync: undefined;
 };
 
 export type StackScreenProps<T extends keyof RootStackParamList> = NativeStackScreenProps<RootStackParamList, T>;

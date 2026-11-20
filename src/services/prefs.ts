@@ -66,6 +66,8 @@ export const PrefKeys = {
   allBankHistoryImported: (profileId: number | null | undefined) =>
     `all_bank_sms_history_imported_profile_${profileId ?? 'default'}`,
   driveBackup: 'google_drive_backup_state',
+  d1Sync: 'cloudflare_d1_sync_state',
+  syncDeviceId: 'cloud_sync_device_id',
   atmCashCutoff: (profileId: number | null | undefined) =>
     `atm_cash_transfer_cutoff_iso_profile_${profileId ?? 'default'}`,
 };
